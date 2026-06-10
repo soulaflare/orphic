@@ -58,13 +58,26 @@
   uniform float uSeed;
   void main() {
     float A = 0.0;
-    for (int i = 0; i < 9; i++) {
+    for (int i = 0; i < 16; i++) {
       vec2 p = hash22(vec2(float(i) * 13.7, uSeed));
-      p = p * 0.7 + 0.15;
+      p = p * 0.8 + 0.1;
       float d = length(vUV - p);
-      if (d < 0.045) A = max(A, vnoise(vUV * 260.0 + uSeed) * smoothstep(0.045, 0.012, d));
+      if (d < 0.055) A = max(A, vnoise(vUV * 260.0 + uSeed) * smoothstep(0.055, 0.015, d));
     }
     fragColor = vec4(A, 0.0, 0.0, 1.0);
+  }`;
+
+  // 4×4 coverage probe: each pixel averages an 8×8 grid of its region,
+  // read back to the CPU for the homeostasis loop
+  const COVER_FRAG = M.FRAG_HEADER + `
+  uniform sampler2D uState;
+  void main() {
+    vec2 base = floor(gl_FragCoord.xy) / 4.0;
+    float sum = 0.0;
+    for (int y = 0; y < 8; y++)
+      for (int x = 0; x < 8; x++)
+        sum += step(0.12, texture(uState, base + (vec2(x, y) + 0.5) / 32.0).r);
+    fragColor = vec4(sum / 64.0);
   }`;
 
   const SHOW_FRAG = M.FRAG_HEADER + M.GLSL_LIB + M.GLSL_AUDIO + `
@@ -103,12 +116,55 @@
       const pSim = glc.program(SIM_FRAG);
       const pInit = glc.program(INIT_FRAG);
       const pShow = glc.program(SHOW_FRAG);
-      let beatCount = 0, reseedTimer = 0;
+      const pCover = glc.program(COVER_FRAG);
+      const coverT = glc.target(4, 4);
+      const coverBuf = new Float32Array(64);
+      let beatCount = 0, reseedTimer = 0, coverTimer = 0;
+      let muBias = 0, covOver = 0, covSmooth = 0.4, covRaw = -1; // homeostasis state
       const splat = { x: 0.5, y: 0.5, r: 0, amt: 0 };
 
       function seed() {
         pInit.use().f('uSeed', Math.random() * 100);
         glc.draw(pInit, state.read);
+        // warm-up: the garden should already be alive when the scene appears
+        for (let i = 0; i < 80; i++) {
+          pSim.use()
+              .v2('uTexel', 1 / state.read.w, 1 / state.read.h)
+              .f('uMu', 0.140).f('uSigma', 0.0145).f('uDtL', 0.22)
+              .f('uErosion', 0).v4('uSplat', 0, 0, 0, 0)
+              .tex('uState', state.read.tex, 0);
+          glc.draw(pSim, state.write);
+          state.swap();
+        }
+      }
+
+      // homeostasis: measure coverage (~every 0.6s), smooth it heavily, and
+      // steer gently toward a target density. Lenia answers over seconds, so
+      // the controller must be slow and damped or it bang-bang oscillates
+      // between a flooded dish and a sterile one.
+      function homeostasis(dt) {
+        coverTimer += dt;
+        if (coverTimer >= 0.6) {
+          coverTimer = 0;
+          pCover.use().tex('uState', state.read.tex, 0);
+          glc.draw(pCover, coverT);
+          const gl = glc.gl;
+          gl.bindFramebuffer(gl.FRAMEBUFFER, coverT.fbo);
+          try {
+            gl.readPixels(0, 0, 4, 4, gl.RGBA, gl.FLOAT, coverBuf);
+            let cov = 0;
+            for (let i = 0; i < 16; i++) cov += coverBuf[i * 4];
+            covRaw = cov / 16;
+          } catch (e) { /* float readback unsupported — run unregulated */ }
+          gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        }
+        if (covRaw < 0) return;
+        covSmooth += (covRaw - covSmooth) * (1 - Math.exp(-dt / 2.5));
+        // deadband ±0.08 around the 0.40 target, then slow proportional gains
+        let err = covSmooth - 0.40;
+        err = Math.abs(err) < 0.08 ? 0 : err - Math.sign(err) * 0.08;
+        muBias = Math.max(-0.022, Math.min(0.012, muBias - err * dt * 0.010));
+        covOver += ((err > 0 ? err : 0) - covOver) * (1 - Math.exp(-dt / 2.0));
       }
 
       return {
@@ -124,8 +180,9 @@
 
           // growth regime breathes on the phase accumulators so the garden
           // keeps reorganizing even when the dish is full
+          homeostasis(dt);
           const mu = 0.138 + 0.014 * Math.sin(f.phaseLevel * 0.21)
-                   + f.bass * 0.020 - f.treble * 0.008;
+                   + f.bass * 0.014 - f.treble * 0.008 + muBias;
           const sigma = 0.0140 + 0.0030 * Math.sin(f.phaseBass * 0.16 + 1.0)
                       + f.centroid * 0.005 + audio.c.speechProb * 0.004;
           // rests nearly freeze time — the garden holds its breath
@@ -149,8 +206,9 @@
             // destruction is what keeps a full dish alive
             splat.amt = beatCount % 3 === 2 ? -0.9 : 0.85;
             reseedTimer = 0;
-          } else if (reseedTimer > 7) {
-            // extinction insurance: sow a couple of organisms
+          } else if (reseedTimer > 7 || (covSmooth < 0.12 && reseedTimer > 1.5)) {
+            // extinction insurance — and a fast lifeline when the dish is
+            // starving, so "black screen with blobs" never lingers
             splat.x = 0.15 + Math.random() * 0.7;
             splat.y = 0.15 + Math.random() * 0.7;
             splat.r = 0.05;
@@ -162,7 +220,7 @@
           M.audioUniforms(pSim, audio, t);
           pSim.v2('uTexel', 1 / state.read.w, 1 / state.read.h)
               .f('uMu', mu).f('uSigma', sigma).f('uDtL', dtL)
-              .f('uErosion', 0.14 + f.percussive * 0.12)
+              .f('uErosion', 0.14 + f.percussive * 0.08 + covOver * 0.5)
               .v4('uSplat', splat.x, splat.y, splat.r, splat.amt)
               .tex('uState', state.read.tex, 0);
           glc.draw(pSim, state.write);
@@ -176,7 +234,7 @@
           M.audioUniforms(pShow, audio, t);
           glc.draw(pShow, out);
         },
-        dispose() { if (state) state.dispose(); },
+        dispose() { if (state) state.dispose(); coverT.dispose(); },
       };
     },
   });
