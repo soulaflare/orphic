@@ -53,6 +53,14 @@
       this.pitchNorm = 0;      // log-scaled 80..1000Hz -> 0..1
       this.voiced = 0;         // smoothed voicing confidence
 
+      // formants: the two lowest spectral-envelope resonances of the vocal
+      // tract. F1 (openness) and F2 (frontness) place a vowel in articulation
+      // space; held through brief unvoiced gaps so the vowel reads steadily.
+      this.f1 = 0.35;          // normalized in 220..1000 Hz
+      this.f2 = 0.5;           // normalized in 800..3000 Hz
+      this.f1Hz = 0; this.f2Hz = 0;
+      this._fPre = null;       // prefix-sum scratch for envelope smoothing
+
       // HPSS (Fitzgerald 2010, median-filter proxy): harmonic = sustained
       // tonal energy (horizontal spectrogram ridges), percussive = broadband
       // transient energy (vertical), harmRatio = balance between them
@@ -241,6 +249,42 @@
 
       // ---- pitch (autocorrelation, time domain) ----
       this._updatePitch(time, eng.ctx ? eng.ctx.sampleRate : 44100, dt);
+
+      // ---- formants (spectral-envelope peaks, needs fresh voicing) ----
+      this._updateFormants(freq, binHz, dt);
+    }
+
+    _updateFormants(freq, binHz, dt) {
+      // Box-smooth the magnitude spectrum to flatten the harmonic comb, then
+      // peak-pick the envelope: the broad energy humps ARE the formants. F2 is
+      // forced above the F1 peak so the pair never collapses onto one ridge.
+      const n = freq.length;
+      if (!this._fPre || this._fPre.length !== n + 1) this._fPre = new Float32Array(n + 1);
+      const pre = this._fPre;
+      for (let i = 0; i < n; i++) pre[i + 1] = pre[i] + freq[i];
+      const W = Math.max(2, Math.round(250 / binHz)); // ~250 Hz smoothing window
+      const peak = (lo, hi) => {
+        let bestBin = lo, best = -1;
+        for (let i = lo; i <= hi; i++) {
+          const a = Math.max(0, i - W), b = Math.min(n - 1, i + W);
+          const m = (pre[b + 1] - pre[a]) / (b - a + 1);
+          if (m > best) { best = m; bestBin = i; }
+        }
+        return [bestBin, best];
+      };
+      // only trust formant tracking while voiced; otherwise hold the last vowel
+      if (this.voiced > 0.2) {
+        const [b1, m1] = peak(Math.round(220 / binHz), Math.round(1000 / binHz));
+        const f2lo = Math.max(b1 + Math.round(150 / binHz), Math.round(800 / binHz));
+        const [b2] = peak(f2lo, Math.max(f2lo + 1, Math.round(3000 / binHz)));
+        if (m1 > 4) { // above the byte-FFT noise floor
+          this.f1Hz = b1 * binHz; this.f2Hz = b2 * binHz;
+          const t1 = Math.min(1, Math.max(0, (this.f1Hz - 220) / 780));
+          const t2 = Math.min(1, Math.max(0, (this.f2Hz - 800) / 2200));
+          this.f1 = envFollow(this.f1, t1, 0.08, 0.12, dt);
+          this.f2 = envFollow(this.f2, t2, 0.08, 0.12, dt);
+        }
+      }
     }
 
     _updateHPSS(freq, dt) {

@@ -98,6 +98,9 @@
         f.pitchNorm = 0.45 + 0.25 * Math.sin(st * 1.7);
         f.voiced = 0.8 + 0.2 * Math.sin(st * 2.3);
         f.pitchHz = 200;
+        // synthetic vowel drift so formant-driven scenes articulate in shots
+        f.f1 = 0.45 + 0.30 * Math.sin(st * 0.9);
+        f.f2 = 0.50 + 0.33 * Math.sin(st * 0.6 + 1.7);
         f.phaseLevel += dt * 0.8; f.phaseBass += dt; f.phaseTreble += dt;
         f.harmonic = 0.5 + 0.3 * Math.sin(st * 1.3);
         f.percussive = f.bassFast;

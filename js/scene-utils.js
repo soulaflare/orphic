@@ -61,6 +61,29 @@
   }
   `;
 
+  /** GLSL: soft round ember/star field — drifting, twinkling motes. Lifted
+   *  from the old voice scene; reused as a living backdrop. Needs GLSL_LIB
+   *  (hash22) + GLSL_AUDIO (uTime). Call embers(uv, aspect, scale, drift,
+   *  density, seed): drift>0 makes cells rise; density is the fill fraction. */
+  M.GLSL_EMBERS = `
+  float embers(vec2 uv, float aspect, float scale, float drift, float density, float seed) {
+    vec2 g = (uv * vec2(aspect, 1.0) + vec2(0.0, -uTime * drift)) * scale;
+    vec2 id = floor(g);
+    float acc = 0.0;
+    for (int oy = -1; oy <= 1; oy++)
+    for (int ox = -1; ox <= 1; ox++) {
+      vec2 cid = id + vec2(ox, oy);
+      vec2 h = hash22(cid + seed);
+      if (h.x > density) continue;
+      vec2 p = cid + 0.5 + (h - 0.5) * 0.8;
+      float d = length(g - p);
+      float tw = 0.55 + 0.45 * sin(uTime * (2.0 + h.y * 4.0) + h.x * 40.0);
+      acc += exp(-d * d * 9.0) * tw;
+    }
+    return acc;
+  }
+  `;
+
   /** Circular-mean hue of the chroma profile on the circle of fifths
    *  (consonant chords land near one hue). Returns prev smoothed toward the
    *  current key along the shortest arc; feed back each frame. */
