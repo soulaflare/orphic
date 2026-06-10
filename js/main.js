@@ -32,6 +32,7 @@
       stopBtn: document.getElementById('btn-stop'),
       panel: document.getElementById('scene-panel'),
       sceneGrid: document.getElementById('scene-grid'),
+      helpBar: document.getElementById('help-bar'),
       toast: document.getElementById('toast'),
     };
 
@@ -173,7 +174,11 @@
       ui.sceneName.classList.add('flash');
       ui.sceneNum.innerHTML = String(idx + 1).padStart(2, '0') + '<i>/' + defs.length + '</i>';
       for (const cell of ui.sceneGrid.children) {
-        cell.classList.toggle('current', Number(cell.dataset.idx) === idx);
+        const current = Number(cell.dataset.idx) === idx;
+        cell.classList.toggle('current', current);
+        if (current && !ui.panel.classList.contains('hidden')) {
+          cell.scrollIntoView({ block: 'nearest' }); // panel scrolls on short windows
+        }
       }
       cycleTimer = 0;
     }
@@ -254,21 +259,27 @@
       if (!ui.panel.classList.contains('hidden') && !ui.panel.contains(e.target)) togglePanel(false);
     });
 
-    ui.fsBtn.addEventListener('click', () => toggleFullscreen());
-    ui.stopBtn.addEventListener('click', () => {
+    function stopCapture() {
       togglePanel(false);
       hideToast();
       engine.stop();
       ui.overlay.classList.remove('hidden');
-    });
+    }
+    ui.fsBtn.addEventListener('click', () => toggleFullscreen());
+    ui.stopBtn.addEventListener('click', stopCapture);
 
+    let starting = false; // a held/repeated start key must not open two captures
     async function startSystem() {
+      if (starting) return;
+      starting = true;
       try {
         await engine.useSystemAudio();
         ui.overlay.classList.add('hidden');
       } catch (err) {
         if (err.name === 'NotAllowedError') return; // user cancelled the picker
         alert((desktop ? 'System audio unavailable: ' : 'Tab audio unavailable: ') + err.message);
+      } finally {
+        starting = false;
       }
     }
     engine.onSourceEnd = () => {
@@ -286,14 +297,37 @@
 
     // keyboard
     window.addEventListener('keydown', e => {
-      if (e.key === 'ArrowRight' || e.key === 'n') setScene(activeIdx + 1);
+      const panelOpen = !ui.panel.classList.contains('hidden');
+      const onLanding = engine.mode === 'none';
+
+      if (e.key === 'Enter' || e.key === ' ') {
+        // preventDefault also keeps a focused button from double-firing
+        e.preventDefault();
+        if (onLanding) startSystem();
+        else if (panelOpen) { disableAuto(); togglePanel(false); } // pick the highlighted one
+        else if (e.key === ' ') setScene(activeIdx + 1);           // space skips while playing
+      }
+      else if (e.key === 'ArrowRight' || e.key === 'n') setScene(activeIdx + 1);
       else if (e.key === 'ArrowLeft' || e.key === 'p') setScene(activeIdx - 1);
+      else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        // with the pattern panel open, vertical arrows step by grid row
+        if (!panelOpen) return;
+        e.preventDefault(); // don't scroll the panel — selection drives it
+        const cols = getComputedStyle(ui.sceneGrid).gridTemplateColumns.split(' ').length;
+        setScene(activeIdx + (e.key === 'ArrowDown' ? cols : -cols));
+      }
       else if (e.key === 'a') ui.autoBtn.click();
       else if (e.key === 's') togglePanel();
-      else if (e.key === 'Escape') togglePanel(false);
+      else if (e.key === 'Escape') {
+        if (panelOpen) togglePanel(false);
+        // esc that exits fullscreen must never also kill the session
+        else if (!onLanding && !document.fullscreenElement) stopCapture();
+      }
       else if (e.key === 'f') toggleFullscreen();
-      else if (e.key === 'h') ui.hud.classList.toggle('hidden-hud');
-      else if (/^[0-9]$/.test(e.key)) { disableAuto(); setScene(e.key === '0' ? 9 : parseInt(e.key, 10) - 1); }
+      else if (e.key === 'h') {
+        ui.hud.classList.toggle('hidden-hud');
+        ui.helpBar.classList.toggle('hidden-hud');
+      }
     });
     function toggleFullscreen() {
       if (document.fullscreenElement) document.exitFullscreen();
@@ -306,6 +340,7 @@
       if (engine.mode === 'none') return;
       hudFade = 3.5;
       ui.hud.classList.remove('asleep');
+      ui.helpBar.classList.remove('asleep');
     });
 
     // dev preview: index.html#ui → HUD awake + panel open over the idle scene
@@ -313,6 +348,7 @@
     if (uiPreview) {
       ui.overlay.classList.add('hidden');
       ui.hud.classList.remove('asleep');
+      ui.helpBar.classList.remove('asleep');
       ui.panel.classList.remove('hidden');
     }
 
@@ -398,8 +434,10 @@
       // HUD info (skip the DOM writes while the HUD is faded out)
       if (uiPreview) hudFade = 1;
       hudFade -= dt;
-      if (hudFade < 0) ui.hud.classList.add('asleep');
-      else {
+      if (hudFade < 0) {
+        ui.hud.classList.add('asleep');
+        ui.helpBar.classList.add('asleep');
+      } else {
         if (classifier.mode !== hudMode) {
           hudMode = classifier.mode;
           ui.modeBadge.textContent = hudMode;

@@ -55,13 +55,15 @@ button back to the landing screen.
 
 | key | action |
 |---|---|
-| `s` / click the scene pill | pattern panel — all sixteen, click to jump |
-| `←` `→` | previous / next pattern |
-| `1`–`9` `0` | jump straight to the first ten (disables auto-cycle) |
+| `space` / `enter` | landing: start capture · panel: select the highlighted pattern |
+| `space` | playing: skip to the next pattern |
+| `s` / click the scene pill | pattern panel — all sixteen; arrows navigate the grid, click or enter to pick |
+| `←` `→` | previous / next pattern (in the panel: move across the grid) |
+| `↑` `↓` | move up / down the pattern grid (panel open) |
 | `a` | toggle auto-cycle (switches pattern every ~45 s, on a beat) |
 | `f` / double-click | fullscreen |
 | `h` | hide the HUD entirely |
-| `esc` | close the pattern panel |
+| `esc` | close the panel — or, while playing, stop capture back to the landing |
 
 ## The sixteen patterns
 

@@ -227,6 +227,26 @@ html, body {
 }
 #btn-stop:hover { color: #ff79c6; border-color: rgba(255, 121, 198, 0.5); }
 
+/* ---------- help bar (wakes and sleeps with the HUD) ---------- */
+#help-bar {
+  position: fixed; bottom: 0; left: 0; right: 0;
+  display: flex; justify-content: center; flex-wrap: wrap; gap: 1.3rem;
+  padding: 1.5rem 1rem 0.95rem;
+  background: linear-gradient(transparent, rgba(3, 2, 8, 0.5));
+  font-size: 0.62rem; letter-spacing: 0.12em; color: var(--dim);
+  z-index: 20;
+  transition: opacity 0.6s ease;
+  pointer-events: none;
+}
+#help-bar.asleep { opacity: 0; }
+#help-bar.hidden-hud { display: none; }
+#help-bar kbd {
+  font-family: inherit;
+  color: var(--fg);
+  background: rgba(255, 255, 255, 0.08);
+  padding: 0.08rem 0.36rem; border-radius: 4px; margin-right: 0.28rem;
+}
+
 /* ---------- scene panel ---------- */
 #scene-panel {
   position: fixed; top: 50%; left: 50%;
