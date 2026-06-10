@@ -146,7 +146,8 @@
     // twinkling stars, drifting almost imperceptibly with the music's time
     vec2 sp = (vUV + vec2(uPhaseLevel * 0.0015, 0.0)) * uRes / 4.0;
     float sh = hash12(floor(sp));
-    float tw = 0.55 + 0.45 * sin(uTime * (1.0 + sh * 4.0) + sh * 40.0);
+    float th = hash12(floor(sp) + 17.31); // independent twinkle hash
+    float tw = 0.6 + 0.4 * sin(uTime * (0.8 + th * 4.0) + th * 40.0);
     float star = step(0.9965, sh)
                * smoothstep(0.5, 0.1, length(fract(sp) - 0.5)) * tw;
     sky += vec3(0.85, 0.9, 1.0) * star * smoothstep(0.45, 0.85, y)
