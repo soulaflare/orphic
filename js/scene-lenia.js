@@ -4,14 +4,16 @@
  * kernel feeds a gaussian growth function; lifeforms bloom, glide and
  * dissolve. Audio: bass shifts the growth optimum (denser growth), spectral
  * centroid widens growth tolerance, level speeds up time, beats sow new
- * organisms along a precessing ring. Periodic reseeding keeps the garden
- * from going extinct (Flow-Lenia's mass-conservation insight, approximated).
+ * organisms along a precessing ring — or carve them away when the dish is
+ * crowded. A slow tide moves the homeostasis target itself between sparse
+ * and lush, so the garden perpetually pushes out and pulls back. Periodic
+ * reseeding keeps it from going extinct.
  */
 (function () {
   'use strict';
   const M = window.ORPHIC;
 
-  const R = 10; // kernel radius in cells
+  const R = 13; // kernel radius in cells — with the 1/7 sim grid this sets creature size
 
   const SIM_FRAG = M.FRAG_HEADER + M.GLSL_LIB + M.GLSL_AUDIO + `
   uniform sampler2D uState;
@@ -49,7 +51,7 @@
       vec2 d = (vUV - uSplat.xy) * vec2(uTexel.y / uTexel.x, 1.0);
       float blob = exp(-dot(d, d) / (uSplat.z * uSplat.z));
       // noisy blob — Lenia needs structure, not flat discs
-      A = clamp(A + uSplat.w * blob * (0.4 + 0.6 * vnoise(vUV * 240.0)), 0.0, 1.0);
+      A = clamp(A + uSplat.w * blob * (0.4 + 0.6 * vnoise(vUV * 100.0)), 0.0, 1.0);
     }
     fragColor = vec4(A, u, 0.0, 1.0);
   }`;
@@ -62,7 +64,7 @@
       vec2 p = hash22(vec2(float(i) * 13.7, uSeed));
       p = p * 0.8 + 0.1;
       float d = length(vUV - p);
-      if (d < 0.055) A = max(A, vnoise(vUV * 260.0 + uSeed) * smoothstep(0.055, 0.015, d));
+      if (d < 0.07) A = max(A, vnoise(vUV * 110.0 + uSeed) * smoothstep(0.07, 0.02, d));
     }
     fragColor = vec4(A, 0.0, 0.0, 1.0);
   }`;
@@ -139,10 +141,11 @@
       }
 
       // homeostasis: measure coverage (~every 0.6s), smooth it heavily, and
-      // steer gently toward a target density. Lenia answers over seconds, so
-      // the controller must be slow and damped or it bang-bang oscillates
-      // between a flooded dish and a sterile one.
-      function homeostasis(dt) {
+      // steer toward the tide's target density. Lenia answers over seconds,
+      // so the controller is damped — but it must out-muscle the bass push
+      // on mu (+0.014) and the breathing sine (+0.014), or a loud song parks
+      // the dish at full coverage forever (hence the -0.05 clamp).
+      function homeostasis(dt, target) {
         coverTimer += dt;
         if (coverTimer >= 0.6) {
           coverTimer = 0;
@@ -160,16 +163,24 @@
         }
         if (covRaw < 0) return;
         covSmooth += (covRaw - covSmooth) * (1 - Math.exp(-dt / 2.5));
-        // deadband ±0.08 around the 0.40 target, then slow proportional gains
-        let err = covSmooth - 0.40;
-        err = Math.abs(err) < 0.08 ? 0 : err - Math.sign(err) * 0.08;
-        muBias = Math.max(-0.022, Math.min(0.012, muBias - err * dt * 0.010));
+        let err = covSmooth - target;
+        err = Math.abs(err) < 0.04 ? 0 : err - Math.sign(err) * 0.04;
+        // over target: lower mu, gently — the patchy erosion wind does the
+        // visible carving. Under target: RELAX the bias back toward 0 fast;
+        // the default regime is already the growth-friendliest, and pushing
+        // mu above it suppresses regrowth (that sign error once starved the
+        // whole dish to black).
+        if (err > 0) muBias = Math.max(-0.030, muBias - err * dt * 0.020);
+        else if (err < 0) muBias = Math.min(0, muBias - err * dt * 0.080);
+        if (covSmooth < 0.10) muBias = Math.min(0, muBias + dt * 0.06); // never let it die
         covOver += ((err > 0 ? err : 0) - covOver) * (1 - Math.exp(-dt / 2.0));
       }
 
       return {
         resize(w, h) {
-          const sw = Math.max(2, Math.round(w / 3)), sh = Math.max(2, Math.round(h / 3));
+          // coarse grid: creatures span ~2R cells, so 1/7 of the screen makes
+          // them big, visible organisms (and the convolution 3x cheaper)
+          const sw = Math.max(2, Math.round(w / 7)), sh = Math.max(2, Math.round(h / 7));
           if (!state) state = glc.pingpong(sw, sh, { repeat: true });
           else { state.a.resize(sw, sh); state.b.resize(sw, sh); }
           seed();
@@ -178,9 +189,13 @@
           if (!state) return;
           const f = audio.f;
 
-          // growth regime breathes on the phase accumulators so the garden
-          // keeps reorganizing even when the dish is full
-          homeostasis(dt);
+          // the tide: the density target itself swings between sparse (~0.16)
+          // and lush (~0.56) over ~25s of loud music (slower when quiet), so
+          // the garden visibly floods out and recedes instead of parking full
+          // probe units undercount what the eye sees (display lighting blooms
+          // them), so 0.44 already reads lush and 0.12 reads sparse
+          const tide = 0.28 + 0.16 * Math.sin(f.phaseLevel * 0.20);
+          homeostasis(dt, tide);
           const mu = 0.138 + 0.014 * Math.sin(f.phaseLevel * 0.21)
                    + f.bass * 0.014 - f.treble * 0.008 + muBias;
           const sigma = 0.0140 + 0.0030 * Math.sin(f.phaseBass * 0.16 + 1.0)
@@ -201,12 +216,14 @@
             const ang = beatCount * 2.399963;
             splat.x = 0.5 + Math.cos(ang) * 0.28;
             splat.y = 0.5 + Math.sin(ang) * 0.28;
-            splat.r = 0.035 + f.bass * 0.04;
-            // every third beat carves a crater instead of sowing —
-            // destruction is what keeps a full dish alive
-            splat.amt = beatCount % 3 === 2 ? -0.9 : 0.85;
+            splat.r = 0.05 + f.bass * 0.05;
+            // beats carve craters when the dish is over the tide's target,
+            // sow when under — the push and pull rides the music itself
+            // (every third beat carves regardless: a full dish needs death)
+            const crowded = covSmooth > tide + 0.10;
+            splat.amt = (beatCount % 3 === 2 || crowded) ? -0.9 : 0.85;
             reseedTimer = 0;
-          } else if (reseedTimer > 7 || (covSmooth < 0.12 && reseedTimer > 1.5)) {
+          } else if (reseedTimer > 7 || (covSmooth < 0.10 && reseedTimer > 1.5)) {
             // extinction insurance — and a fast lifeline when the dish is
             // starving, so "black screen with blobs" never lingers
             splat.x = 0.15 + Math.random() * 0.7;
@@ -220,7 +237,7 @@
           M.audioUniforms(pSim, audio, t);
           pSim.v2('uTexel', 1 / state.read.w, 1 / state.read.h)
               .f('uMu', mu).f('uSigma', sigma).f('uDtL', dtL)
-              .f('uErosion', 0.14 + f.percussive * 0.08 + covOver * 0.5)
+              .f('uErosion', 0.14 + f.percussive * 0.08 + covOver * 0.9)
               .v4('uSplat', splat.x, splat.y, splat.r, splat.amt)
               .tex('uState', state.read.tex, 0);
           glc.draw(pSim, state.write);
