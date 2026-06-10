@@ -1,21 +1,18 @@
 # ORPHIC — audio-reactive generative visualizer
 
-Sixteen GPU pattern simulations that react live to **music (MP3/WAV/OGG/M4A)**, your
-**microphone**, or **system / tab audio** (Spotify, YouTube, …), with automatic
-speech-vs-music detection that re-tunes the visuals for voice. Runs two ways:
-as a zero-dependency web page, or as a desktop app (Electron) that captures
-**everything playing on the machine** natively.
+Sixteen GPU pattern simulations that react live to **whatever's playing**
+(Spotify, YouTube, anything), with automatic speech-vs-music detection that
+re-tunes the visuals for voice. Runs two ways: as a desktop app (Electron)
+that captures **everything playing on the machine** natively, or as a
+zero-dependency web page. Until capture starts, the landing screen plays an
+idle attract mode — a real scene breathing to a gentle synthetic groove.
 
 ## Run it — web
 
-Just open `index.html` in Chrome, Edge, Firefox or Safari (double-click works —
-no server, no build, no dependencies). Then:
-
-- **play a file** — or drag & drop any audio file onto the window
-- **use microphone** — live music or speech (grant mic permission)
-- **capture spotify / tab audio** — Chrome & Edge only: share a tab and tick
-  "Share tab audio" in the picker (Firefox/Safari never return tab audio; there,
-  route audio through a virtual device like BlackHole and use the mic source)
+Just open `index.html` in Chrome or Edge (double-click works — no server, no
+build, no dependencies) and hit **capture system audio**: share a tab and tick
+"Share tab audio" in the picker. (Firefox/Safari never return tab audio from
+the share picker — use the desktop app there.)
 
 ## Run it — desktop (Electron)
 
@@ -51,14 +48,20 @@ stream goes dead silently instead of erroring, electron/electron#49607).
 
 ### Controls
 
+The HUD (wakes on mouse move): scene pill with pattern number + auto-cycle
+progress (click it for the full pattern panel), live BPM with a beat-pulsing
+dot, music/speech/ambient badge, auto-cycle toggle, fullscreen, and a stop
+button back to the landing screen.
+
 | key | action |
 |---|---|
+| `s` / click the scene pill | pattern panel — all sixteen, click to jump |
 | `←` `→` | previous / next pattern |
-| `1`–`9` `0` | jump straight to a pattern (disables auto-cycle) |
-| `space` | pause / resume playback |
+| `1`–`9` `0` | jump straight to the first ten (disables auto-cycle) |
 | `a` | toggle auto-cycle (switches pattern every ~45 s, on a beat) |
 | `f` / double-click | fullscreen |
 | `h` | hide the HUD entirely |
+| `esc` | close the pattern panel |
 
 ## The sixteen patterns
 
@@ -127,3 +130,5 @@ renders literally.
   once, logs `SCENE OK/FAIL` per scene
 - `index.html#shot-N` — drives scene N with synthetic audio (600 sim frames)
   for screenshots
+- `index.html#ui` — HUD + pattern panel forced visible over the idle scene,
+  for styling work

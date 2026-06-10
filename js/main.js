@@ -20,12 +20,18 @@
       overlay: document.getElementById('overlay'),
       hud: document.getElementById('hud'),
       sceneName: document.getElementById('scene-name'),
-      sourceName: document.getElementById('source-name'),
+      sceneNum: document.getElementById('scene-num'),
+      scenePill: document.getElementById('scene-pill'),
+      cycleBar: document.getElementById('cycle-bar'),
       modeBadge: document.getElementById('mode-badge'),
-      bpmBadge: document.getElementById('bpm-badge'),
+      bpmText: document.getElementById('bpm-text'),
+      beatDot: document.getElementById('beat-dot'),
       systemBtn: document.getElementById('btn-system'),
       autoBtn: document.getElementById('btn-auto'),
-      helpBar: document.getElementById('help-bar'),
+      fsBtn: document.getElementById('btn-fs'),
+      stopBtn: document.getElementById('btn-stop'),
+      panel: document.getElementById('scene-panel'),
+      sceneGrid: document.getElementById('scene-grid'),
       toast: document.getElementById('toast'),
     };
 
@@ -147,6 +153,7 @@
     const CYCLE_SECONDS = 45;
     let lastT = performance.now() / 1000;
     let hudFade = 0;
+    let hudBeatHeld = false;
 
     function setScene(idx, why) {
       const defs = M.scenes;
@@ -157,10 +164,14 @@
       activeIdx = idx;
       active = defs[idx].create(glc);
       if (active.resize) active.resize(glc.width, glc.height);
-      ui.sceneName.textContent = defs[idx].name;
+      ui.sceneName.textContent = defs[idx].name.split(' · ')[0];
       ui.sceneName.classList.remove('flash');
       void ui.sceneName.offsetWidth; // restart animation
       ui.sceneName.classList.add('flash');
+      ui.sceneNum.innerHTML = String(idx + 1).padStart(2, '0') + '<i>/' + defs.length + '</i>';
+      for (const cell of ui.sceneGrid.children) {
+        cell.classList.toggle('current', Number(cell.dataset.idx) === idx);
+      }
       cycleTimer = 0;
     }
 
@@ -191,22 +202,75 @@
     ui.autoBtn.addEventListener('click', () => {
       autoCycle = !autoCycle;
       ui.autoBtn.classList.toggle('on', autoCycle);
-      ui.autoBtn.textContent = autoCycle ? 'auto-cycle: on' : 'auto-cycle: off';
+    });
+    function disableAuto() {
+      autoCycle = false;
+      ui.autoBtn.classList.remove('on');
+    }
+
+    // scene panel: every pattern, numbered and clickable
+    M.scenes.forEach((def, i) => {
+      const parts = def.name.split(' · ');
+      const cell = document.createElement('button');
+      cell.className = 'scene-cell';
+      cell.dataset.idx = i;
+      const num = document.createElement('span');
+      num.className = 'num';
+      num.textContent = String(i + 1).padStart(2, '0');
+      const title = document.createElement('span');
+      title.className = 'title';
+      title.textContent = parts[0];
+      cell.append(num, title);
+      if (parts[1]) {
+        const sub = document.createElement('span');
+        sub.className = 'sub';
+        sub.textContent = parts[1];
+        cell.append(sub);
+      }
+      if (def.modes && !def.modes.includes('music')) {
+        const tag = document.createElement('span');
+        tag.className = 'tag';
+        tag.textContent = def.modes.join(' · ');
+        cell.append(tag);
+      }
+      cell.addEventListener('click', () => {
+        disableAuto(); // an explicit pick should stick
+        setScene(i);
+        togglePanel(false);
+      });
+      ui.sceneGrid.append(cell);
+    });
+
+    function togglePanel(open) {
+      const want = open !== undefined ? open : ui.panel.classList.contains('hidden');
+      if (want && engine.mode === 'none') return; // not on the landing screen
+      ui.panel.classList.toggle('hidden', !want);
+    }
+    ui.scenePill.addEventListener('click', e => { e.stopPropagation(); togglePanel(); });
+    window.addEventListener('click', e => {
+      if (!ui.panel.classList.contains('hidden') && !ui.panel.contains(e.target)) togglePanel(false);
+    });
+
+    ui.fsBtn.addEventListener('click', () => toggleFullscreen());
+    ui.stopBtn.addEventListener('click', () => {
+      togglePanel(false);
+      hideToast();
+      engine.stop();
+      ui.overlay.classList.remove('hidden');
     });
 
     async function startSystem() {
       try {
         await engine.useSystemAudio();
         ui.overlay.classList.add('hidden');
-        ui.sourceName.textContent = desktop ? 'system audio' : 'tab audio';
       } catch (err) {
         if (err.name === 'NotAllowedError') return; // user cancelled the picker
         alert((desktop ? 'System audio unavailable: ' : 'Tab audio unavailable: ') + err.message);
       }
     }
     engine.onSourceEnd = () => {
-      // "Stop sharing" pressed in the browser UI — back to the source picker
-      ui.sourceName.textContent = '';
+      // "Stop sharing" pressed in the browser UI — back to the landing screen
+      togglePanel(false);
       hideToast();
       ui.overlay.classList.remove('hidden');
     };
@@ -222,9 +286,11 @@
       if (e.key === 'ArrowRight' || e.key === 'n') setScene(activeIdx + 1);
       else if (e.key === 'ArrowLeft' || e.key === 'p') setScene(activeIdx - 1);
       else if (e.key === 'a') ui.autoBtn.click();
+      else if (e.key === 's') togglePanel();
+      else if (e.key === 'Escape') togglePanel(false);
       else if (e.key === 'f') toggleFullscreen();
       else if (e.key === 'h') ui.hud.classList.toggle('hidden-hud');
-      else if (/^[0-9]$/.test(e.key)) { autoCycle = false; ui.autoBtn.classList.remove('on'); ui.autoBtn.textContent = 'auto-cycle: off'; setScene(e.key === '0' ? 9 : parseInt(e.key, 10) - 1); }
+      else if (/^[0-9]$/.test(e.key)) { disableAuto(); setScene(e.key === '0' ? 9 : parseInt(e.key, 10) - 1); }
     });
     function toggleFullscreen() {
       if (document.fullscreenElement) document.exitFullscreen();
@@ -237,8 +303,15 @@
       if (engine.mode === 'none') return;
       hudFade = 3.5;
       ui.hud.classList.remove('asleep');
-      ui.helpBar.classList.remove('asleep');
     });
+
+    // dev preview: index.html#ui → HUD awake + panel open over the idle scene
+    const uiPreview = location.hash === '#ui';
+    if (uiPreview) {
+      ui.overlay.classList.add('hidden');
+      ui.hud.classList.remove('asleep');
+      ui.panel.classList.remove('hidden');
+    }
 
     // ---- idle attract mode ----
     // Before any capture starts, the landing shows a real scene breathing to
@@ -319,13 +392,25 @@
       if (idle) idleDrive(dt);
       audioTex.update();
 
-      // HUD info
-      ui.modeBadge.textContent = classifier.mode;
-      ui.modeBadge.className = 'badge mode-' + classifier.mode;
-      ui.bpmBadge.textContent = features.bpm > 0 && features.beatConf > 0.2
-        ? Math.round(features.bpm) + ' bpm' : '·';
+      // HUD info (skip the DOM writes while the HUD is faded out)
+      if (uiPreview) hudFade = 1;
       hudFade -= dt;
-      if (hudFade < 0) { ui.hud.classList.add('asleep'); ui.helpBar.classList.add('asleep'); }
+      if (hudFade < 0) ui.hud.classList.add('asleep');
+      else {
+        ui.modeBadge.textContent = classifier.mode;
+        ui.modeBadge.className = 'badge mode-' + classifier.mode;
+        ui.bpmText.textContent = features.bpm > 0 && features.beatConf > 0.2
+          ? Math.round(features.bpm) + ' bpm' : '·';
+        ui.cycleBar.style.transform = 'scaleX(' +
+          (uiPreview ? 0.4 : autoCycle && !idle ? Math.min(1, cycleTimer / CYCLE_SECONDS) : 0) + ')';
+        const beatNow = features.beat > 0.9;
+        if (beatNow && !hudBeatHeld) {
+          ui.beatDot.classList.remove('pulse');
+          void ui.beatDot.offsetWidth; // restart the pulse animation
+          ui.beatDot.classList.add('pulse');
+        }
+        hudBeatHeld = beatNow;
+      }
 
       // auto-cycle scenes; bias switches to land on beats
       if (autoCycle && M.scenes.length > 1 && engine.mode !== 'none') {

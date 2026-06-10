@@ -20,23 +20,42 @@
   </div>
 
   <div id="hud" class="asleep">
-    <span id="scene-name"></span>
-    <span id="source-name"></span>
-    <span class="spacer"></span>
-    <span class="badge" id="bpm-badge">·</span>
-    <span class="badge mode-music" id="mode-badge">music</span>
-    <button class="hud-btn on" id="btn-auto">auto-cycle: on</button>
+    <div class="hud-group">
+      <span id="brand">ORPHIC</span>
+      <button id="scene-pill" title="all patterns — s">
+        <span id="scene-num">01<i>/16</i></span>
+        <span id="scene-name"></span>
+        <span id="cycle-bar"></span>
+      </button>
+    </div>
+    <div class="hud-group">
+      <span class="badge" id="bpm-badge"><span id="beat-dot"></span><span id="bpm-text">·</span></span>
+      <span class="badge mode-music" id="mode-badge">music</span>
+      <button class="hud-btn on" id="btn-auto" title="auto-cycle — a">auto</button>
+      <button class="hud-btn hud-icon" id="btn-fs" title="fullscreen — f" aria-label="fullscreen">
+        <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+          <path d="M2 6V2h4M14 6V2h-4M2 10v4h4M14 10v4h-4"/>
+        </svg>
+      </button>
+      <button class="hud-btn hud-icon" id="btn-stop" title="stop capture" aria-label="stop capture">×</button>
+    </div>
+  </div>
+
+  <div id="scene-panel" class="hidden">
+    <div class="panel-title">sixteen patterns</div>
+    <div id="scene-grid"></div>
+    <div class="panel-hint">
+      <span><kbd>←</kbd><kbd>→</kbd> switch</span>
+      <span><kbd>1–0</kbd> jump</span>
+      <span><kbd>s</kbd> this panel</span>
+      <span><kbd>a</kbd> auto-cycle</span>
+      <span><kbd>f</kbd> fullscreen</span>
+      <span><kbd>h</kbd> hide hud</span>
+      <span><kbd>esc</kbd> close</span>
+    </div>
   </div>
 
   <div id="toast" class="hidden"></div>
-
-  <div id="help-bar" class="asleep">
-    <span><kbd>←</kbd><kbd>→</kbd> switch pattern</span>
-    <span><kbd>1–9</kbd><kbd>0</kbd> jump to pattern</span>
-    <span><kbd>a</kbd> auto-cycle</span>
-    <span><kbd>f</kbd> fullscreen</span>
-    <span><kbd>h</kbd> hide hud</span>
-  </div>
 
   <!-- core -->
   <script src="js/gl.js"></script>

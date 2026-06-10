@@ -188,6 +188,14 @@
       }, 500);
     }
 
+    /** Stop the current source and return to the idle state. */
+    stop() {
+      this.mode = 'none'; // set first so 'ended' listeners see a deliberate stop
+      this._disconnectSource();
+      this.freqData.fill(0);
+      this.timeData.fill(0);
+    }
+
     togglePlayback() {
       if (this.mode !== 'file' || !this.mediaEl) return;
       if (this.mediaEl.paused) this.mediaEl.play();
