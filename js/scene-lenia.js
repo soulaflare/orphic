@@ -16,8 +16,8 @@
   const SIM_FRAG = M.FRAG_HEADER + M.GLSL_LIB + M.GLSL_AUDIO + `
   uniform sampler2D uState;
   uniform vec2 uTexel;
-  uniform float uMu, uSigma, uDtL;
-  uniform vec4 uSplat; // xy pos, z radius(uv), w amount
+  uniform float uMu, uSigma, uDtL, uErosion;
+  uniform vec4 uSplat; // xy pos, z radius(uv), w amount (negative = carve)
   const int R = ${R};
   void main() {
     float A = texture(uState, vUV).r;
@@ -38,7 +38,14 @@
     float growth = 2.0 * exp(-pow((u - uMu) / uSigma, 2.0) * 0.5) - 1.0;
     A = clamp(A + uDtL * growth, 0.0, 1.0);
 
-    if (uSplat.w > 0.0) {
+    // drifting erosion wind: broad inhibition fronts that keep carving the
+    // garden into moving continents of life and void — a "full" dish is
+    // impossible, it must keep regrowing behind the wind forever
+    float wind = smoothstep(0.52, 0.80,
+        vnoise(vUV * vec2(2.2, 1.8) + vec2(uPhaseLevel * 0.14, uPhaseBass * 0.08)));
+    A = clamp(A - uErosion * wind * uDtL, 0.0, 1.0);
+
+    if (uSplat.w != 0.0) {
       vec2 d = (vUV - uSplat.xy) * vec2(uTexel.y / uTexel.x, 1.0);
       float blob = exp(-dot(d, d) / (uSplat.z * uSplat.z));
       // noisy blob — Lenia needs structure, not flat discs
@@ -79,6 +86,8 @@
     col += body * rim * (0.6 + uTreble * 1.4);          // electric membrane
     col += vec3(0.9, 1.0, 0.95) * smoothstep(0.75, 1.0, A) * 0.22;
     col += col * uBeat * 0.25;
+    col *= 1.0 - uQuiet * 0.4;   // rests dim the garden
+    col *= 1.0 + uBurst * 0.5;   // the return floods it with light
     vec3 bg = vec3(0.008, 0.012, 0.025);
     col += bg * (1.0 - A);
     float d = length(vUV - 0.5);
@@ -113,19 +122,32 @@
           if (!state) return;
           const f = audio.f;
 
-          const mu = 0.15 + f.bass * 0.022 - f.treble * 0.008;
-          const sigma = 0.0165 + f.centroid * 0.007 + audio.c.speechProb * 0.004;
-          const dtL = 0.10 + f.level * 0.14;
+          // growth regime breathes on the phase accumulators so the garden
+          // keeps reorganizing even when the dish is full
+          const mu = 0.138 + 0.014 * Math.sin(f.phaseLevel * 0.21)
+                   + f.bass * 0.020 - f.treble * 0.008;
+          const sigma = 0.0140 + 0.0030 * Math.sin(f.phaseBass * 0.16 + 1.0)
+                      + f.centroid * 0.005 + audio.c.speechProb * 0.004;
+          // rests nearly freeze time — the garden holds its breath
+          const dtL = (0.10 + f.level * 0.14) * (1 - f.quiet * 0.85);
 
           splat.amt = 0;
           reseedTimer += dt;
-          if (f.beat > 0.9 || (f.onset > 0.9 && f.voiced > 0.4)) {
+          if (f.burst === 1) {
+            // music returns: a big bloom erupts dead centre
+            splat.x = 0.5; splat.y = 0.5;
+            splat.r = 0.11;
+            splat.amt = 0.9;
+            reseedTimer = 0;
+          } else if (f.beat > 0.9 || (f.onset > 0.9 && f.voiced > 0.4)) {
             beatCount++;
             const ang = beatCount * 2.399963;
             splat.x = 0.5 + Math.cos(ang) * 0.28;
             splat.y = 0.5 + Math.sin(ang) * 0.28;
             splat.r = 0.035 + f.bass * 0.04;
-            splat.amt = 0.85;
+            // every third beat carves a crater instead of sowing —
+            // destruction is what keeps a full dish alive
+            splat.amt = beatCount % 3 === 2 ? -0.9 : 0.85;
             reseedTimer = 0;
           } else if (reseedTimer > 7) {
             // extinction insurance: sow a couple of organisms
@@ -140,6 +162,7 @@
           M.audioUniforms(pSim, audio, t);
           pSim.v2('uTexel', 1 / state.read.w, 1 / state.read.h)
               .f('uMu', mu).f('uSigma', sigma).f('uDtL', dtL)
+              .f('uErosion', 0.14 + f.percussive * 0.12)
               .v4('uSplat', splat.x, splat.y, splat.r, splat.amt)
               .tex('uState', state.read.tex, 0);
           glc.draw(pSim, state.write);

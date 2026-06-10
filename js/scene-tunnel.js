@@ -80,7 +80,7 @@
           const f = audio.f;
           travel += dt * (0.4 + f.level * 2.6 + f.bass * 1.4);
           twist += dt * (Math.sin(f.phaseLevel * 0.35) * (0.1 + f.mid * 0.5));
-          if (f.beat > 0.9) {
+          if (f.beat > 0.9 || f.burst === 1) {
             rings[ringIdx] = travel + 3.2; // spawn ahead, rushes toward camera
             ringIdx = (ringIdx + 1) % 8;
           }

@@ -70,6 +70,8 @@
     col += spec * m * (0.5 + uTreble * 1.2);
     col += base * uBeat * m * 0.30;
     col *= 0.8 + uLevel * 0.7;
+    col *= 1.0 - uQuiet * 0.35;
+    col *= 1.0 + uBurst * 0.5;
     float d = length(vUV - 0.5);
     col *= 1.0 - d * d * 0.8;
     fragColor = vec4(aces(col), 1.0);
@@ -117,11 +119,17 @@
           const a = REGIMES[regime], b = REGIMES[(regime + 1) % REGIMES.length];
           const s = regimeBlend * regimeBlend * (3 - 2 * regimeBlend);
           let feed = a[0] + (b[0] - a[0]) * s + f.bass * 0.006;
-          let kill = a[1] + (b[1] - a[1]) * s + f.centroid * 0.0015;
+          // in a rest the kill rate creeps up: the tissue visibly wilts back
+          let kill = a[1] + (b[1] - a[1]) * s + f.centroid * 0.0015 + f.quiet * 0.0035;
 
           // beat → stamp a new seed along a slowly precessing ring
           splat.amt = 0;
-          if (f.beat > 0.9) {
+          if (f.burst === 1) {
+            // music returns: a fat bloom right where the wilt left room
+            splat.x = 0.5; splat.y = 0.5;
+            splat.r = 0.07;
+            splat.amt = 0.9;
+          } else if (f.beat > 0.9) {
             beatCount++;
             const ang = beatCount * 2.399963; // golden angle
             splat.x = 0.5 + Math.cos(ang) * (0.18 + f.bass * 0.2);
@@ -134,7 +142,8 @@
             splat.amt = 0.45;
           }
 
-          const STEPS = 13;
+          // rests slow the chemistry to a crawl — growth visibly pauses
+          const STEPS = f.quiet > 0.5 ? 3 : 13;
           for (let i = 0; i < STEPS; i++) {
             pSim.use()
               .v2('uTexel', 1 / state.read.w, 1 / state.read.h)

@@ -28,7 +28,8 @@
     float a = atan(uv.y, uv.x) / 6.28318 + 0.5 + uSpin;
 
     float c = chromaAt(a);
-    float petal = 0.30 + 0.58 * c;
+    // rests close the flower toward a tight bud; harmony reopens it
+    float petal = 0.30 - uQuiet * 0.14 + 0.58 * c;
     float pc = floor(fract(a) * 12.0);
     float noteHue = uKeyHue + mod(pc * 7.0, 12.0) / 12.0 * 0.75;
     vec3 noteCol = pal(noteHue, vec3(0.5), vec3(0.5), vec3(1.0), vec3(0.0, 0.33, 0.67));
@@ -51,6 +52,7 @@
     float spark = step(0.995, hash12(floor(vec2(fract(a * 12.0), rr) * 64.0) + floor(uTime * 24.0)));
     col += vec3(1.0) * spark * uOnset * 0.7 * inside;
 
+    col *= 1.0 + uBurst * 0.9; // the return makes the whole bloom flash
     fragColor = vec4(col, 1.0);
   }`;
 
@@ -98,7 +100,7 @@
           const f = audio.f;
           keyHue = M.chromaHue(f.chroma, keyHue, dt);
           beatLatch -= dt;
-          if (f.beat > 0.9 && beatLatch <= 0) {
+          if ((f.beat > 0.9 || f.burst === 1) && beatLatch <= 0) {
             spinTarget += 1 / 24; // golden-ish step per beat
             beatLatch = 0.25;
           }

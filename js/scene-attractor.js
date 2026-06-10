@@ -150,14 +150,16 @@
           for (let it = 0; it < 3; it++) {
             pUpdate.use()
               .v4('uParams', wob[0], wob[1], wob[2], wob[3])
-              .f('uJitter', 0.002 + f.flux * 0.02)
+              // a return from silence blasts particles off the attractor;
+              // they re-condense onto it over the next second
+              .f('uJitter', 0.002 + f.flux * 0.02 + f.burst * 0.30)
               .f('uTime', t + it * 0.37)
               .tex('uParticles', particles.read.tex, 0);
             glc.draw(pUpdate, particles.write);
             particles.swap();
           }
 
-          pFade.use().f('uFade', 0.90 - f.onset * 0.06)
+          pFade.use().f('uFade', 0.90 - f.onset * 0.06 - f.quiet * 0.05)
                .tex('uAccum', accum.read.tex, 0);
           glc.draw(pFade, accum.write);
 

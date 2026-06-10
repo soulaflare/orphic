@@ -51,7 +51,8 @@
     age += uDt;
 
     float life = 6.0 + h.y * 6.0;
-    bool burst = uOnset > 0.9 && h.x < 0.05;
+    // onsets detonate a few; a return from silence detonates a third of the sky
+    bool burst = (uOnset > 0.9 && h.x < 0.05) || (uBurst > 0.8 && h.x < 0.33);
     if (age > life || pos.x < -0.05 || pos.x > 1.05 || pos.y < -0.05 || pos.y > 1.05 || burst) {
       if (burst) {
         float ang = h.y * 6.28318;

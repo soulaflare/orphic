@@ -50,8 +50,9 @@
     float sd = (species < 0.5 ? 0.011 : species < 1.5 ? 0.007 : 0.0045)
              * (0.7 + band * 0.8);                           // sensor distance (uv)
     float turn = 0.22 + uFlux * 2.2;                         // turn rate (rad/step)
-    float speed = (species < 0.5 ? 0.0018 : species < 1.5 ? 0.0024 : 0.0030)
-                * (0.50 + kick * 1.7) + uLevel * 0.0006;
+    float speed = ((species < 0.5 ? 0.0018 : species < 1.5 ? 0.0024 : 0.0030)
+                * (0.50 + kick * 1.7) + uLevel * 0.0006)
+                * (1.0 - uQuiet * 0.6); // rests: the web slows to a crawl
 
     vec2 sscale = vec2(1.0 / uAspect, 1.0);
     vec2 dirF = vec2(cos(heading), sin(heading));
@@ -86,6 +87,11 @@
       float want = atan(toC.y, toC.x);
       float d = mod(want - heading + 3.14159, 6.28318) - 3.14159;
       heading += d * uBeat * (species < 0.5 ? 0.14 : species < 1.5 ? 0.06 : 0.025);
+    }
+    // music returns after a rest: the whole web blooms outward
+    if (uBurst > 0.8 && rnd.x < 0.6) {
+      vec2 fromC = pos - vec2(0.5);
+      heading = atan(fromC.y, fromC.x) + (rnd.y - 0.5) * 1.2;
     }
 
     pos += vec2(cos(heading), sin(heading)) * speed * sscale * (uDt * 60.0);
@@ -198,7 +204,7 @@
           gl.useProgram(pDeposit.handle);
           pDeposit._pendingTex.length = 0;
           pDeposit.i('uDim', DIM)
-                  .f('uDeposit', 0.020 + audio.f.level * 0.035)
+                  .f('uDeposit', (0.020 + audio.f.level * 0.035) * (1 - audio.f.quiet * 0.6))
                   .v3('uBands', audio.f.bass, audio.f.mid, audio.f.treble)
                   .tex('uAgents', agents.read.tex, 0);
           pDeposit._bindPending();

@@ -93,7 +93,7 @@
       float band = specLog(clamp(p.y * 0.10 + 0.5, 0.0, 1.0));
       float cavity = smoothstep(0.8, 0.2, trap.w); // glow pools in the recesses
       vec3 emis = pal(hue + 0.45, vec3(0.55), vec3(0.45), vec3(1.0), vec3(0.0, 0.33, 0.67))
-                  * band * band * cavity * (2.2 + uBeat * 2.6);
+                  * band * band * cavity * (2.2 + uBeat * 2.6 + uBurst * 3.5);
 
       col = base * (vec3(0.07) + dif) * ao
           + base * fre * 0.6

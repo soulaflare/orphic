@@ -48,11 +48,13 @@
     col += lineCol * line * (1.5 + uBeat * 1.5);
     // sand sparkle on the nodes
     float grain = hash12(floor(uv * uRes.y * 0.7) + floor(uTime * 24.0));
-    col += lineCol * line * step(0.93, grain) * (0.4 + uTreble * 1.6);
+    col += lineCol * line * step(0.93, grain) * (0.4 + uTreble * 1.6) * (1.0 - uQuiet);
 
     float d = length(vUV - 0.5);
     col *= 1.0 - d * d * 1.1;
     col *= 0.55 + uLevel * 0.9;
+    col *= 1.0 - uQuiet * 0.5;   // rests: the plate goes still and dark
+    col *= 1.0 + uBurst * 0.7;   // the re-strike flashes it awake
     fragColor = vec4(aces(col), 1.0);
   }`;
 
@@ -81,7 +83,7 @@
         resize() {},
         update(dt, audio, t) {
           const f = audio.f;
-          if (f.beat > 0.9 || f.onset > 0.95) newTargets();
+          if (f.beat > 0.9 || f.onset > 0.95 || f.burst === 1) newTargets();
           const k = 1 - Math.exp(-dt * 2.4);
           for (let i = 0; i < 6; i++) cur[i] += (tgt[i] - cur[i]) * k;
           rot += dt * (0.02 + f.mid * 0.12);
@@ -89,9 +91,14 @@
           zoom += (zTgt - zoom) * (1 - Math.exp(-dt * 9));
         },
         render(out, audio, t) {
+          const f = audio.f;
+          // the plate never freezes: modes detune continuously between
+          // strikes, riding the loudness phase (still in true silence)
+          const w = cur.map((c, i) =>
+            c + Math.sin(f.phaseLevel * 0.31 + i * 1.3) * (0.05 + f.mid * 0.10));
           prog.use()
-            .v4('uModeA', cur[0], cur[1], cur[2], cur[3])
-            .v4('uModeB', cur[4], cur[5], rot, zoom)
+            .v4('uModeA', w[0], w[1], w[2], w[3])
+            .v4('uModeB', w[4], w[5], rot, zoom)
             .v2('uRes', glc.width, glc.height);
           M.audioUniforms(prog, audio, t);
           glc.draw(prog, out);

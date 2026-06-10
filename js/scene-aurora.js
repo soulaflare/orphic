@@ -35,10 +35,14 @@
     // night sky: near-black with a whisper of color, stars above
     vec3 col = mix(vec3(0.012, 0.014, 0.030), vec3(0.002, 0.002, 0.008),
                    pow(p.y, 0.7));
-    vec2 sgrid = p * uRes / 4.0;
-    float star = step(0.997, hash12(floor(sgrid)))
-               * smoothstep(0.5, 0.1, length(fract(sgrid) - 0.5));
-    col += vec3(star) * smoothstep(0.35, 0.8, p.y) * (0.35 + uTreble * 0.3);
+    // twinkling stars, drifting almost imperceptibly with the music's time
+    vec2 sgrid = (p + vec2(uPhaseLevel * 0.0015, 0.0)) * uRes / 4.0;
+    float sh = hash12(floor(sgrid));
+    float tw = 0.55 + 0.45 * sin(uTime * (1.0 + sh * 4.0) + sh * 40.0);
+    float star = step(0.997, sh)
+               * smoothstep(0.5, 0.1, length(fract(sgrid) - 0.5)) * tw;
+    col += vec3(0.85, 0.9, 1.0) * star * smoothstep(0.35, 0.8, p.y)
+           * (0.45 + uTreble * 0.35);
 
     // silky folds, drifting on the loudness phase
     vec2 w1 = vec2(fbm(vec2(p.x * 2.1, p.y * 1.2) + t1),

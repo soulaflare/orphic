@@ -160,6 +160,16 @@
           const sTexel = [1 / vel.read.w, 1 / vel.read.h];
 
           // ---- audio-driven forcing ----
+          if (f.burst === 1) {
+            // music returns: a white-hot ring detonates through the still ink
+            const n = 7;
+            for (let i = 0; i < n; i++) {
+              const a = (i / n) * Math.PI * 2 + Math.random();
+              const ox = 0.5 + Math.cos(a) * 0.10, oy = 0.5 + Math.sin(a) * 0.10;
+              doSplat(ox, oy, Math.cos(a) * 650, Math.sin(a) * 650,
+                      [0.9, 0.85, 0.75], 0.004);
+            }
+          }
           if (f.beat > 0.9) {
             beatCount++;
             const n = 5;
@@ -220,7 +230,7 @@
           glc.draw(progs.advect, vel.write); vel.swap();
 
           progs.advect.use().v2('uTexel', sTexel[0], sTexel[1])
-            .f('uDt', sdt).f('uDissipation', 0.988 - f.flux * 0.006)
+            .f('uDt', sdt).f('uDissipation', 0.988 - f.flux * 0.006 - f.quiet * 0.012)
             .tex('uVelocity', vel.read.tex, 0).tex('uSource', dye.read.tex, 1);
           glc.draw(progs.advect, dye.write); dye.swap();
         },
