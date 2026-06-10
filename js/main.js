@@ -68,6 +68,9 @@
         f.voiced = 0.8 + 0.2 * Math.sin(st * 2.3);
         f.pitchHz = 200;
         f.phaseLevel += dt * 0.8; f.phaseBass += dt; f.phaseTreble += dt;
+        f.harmonic = 0.5 + 0.3 * Math.sin(st * 1.3);
+        f.percussive = f.bassFast;
+        f.quiet = 0; f.burst = f.beat;
         for (let c = 0; c < 12; c++) f.chroma[c] = 0.5 + 0.5 * Math.sin(st * 0.9 + c * 2.1);
         // synthetic spectrum/waveform so per-frequency scenes have content
         const fd = engine.freqData, td = engine.timeData;

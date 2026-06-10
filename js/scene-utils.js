@@ -20,7 +20,9 @@
         .f('uPitch', f.pitchNorm).f('uVoiced', f.voiced)
         .f('uSpeech', audio.c.speechProb)
         .f('uPhaseLevel', f.phaseLevel).f('uPhaseBass', f.phaseBass)
-        .f('uPhaseTreble', f.phaseTreble);
+        .f('uPhaseTreble', f.phaseTreble)
+        .f('uHarmonic', f.harmonic).f('uPercussive', f.percussive)
+        .f('uQuiet', f.quiet).f('uBurst', f.burst);
     return prog;
   };
 
@@ -114,6 +116,7 @@
   uniform float uOnset, uBeat, uBeatPhase, uCentroid, uFlux;
   uniform float uPitch, uVoiced, uSpeech;
   uniform float uPhaseLevel, uPhaseBass, uPhaseTreble;
+  uniform float uHarmonic, uPercussive, uQuiet, uBurst;
   `;
 
   /** GLSL: IQ cosine palette + hsv + tonemap + hash/noise utilities. */

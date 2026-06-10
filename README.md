@@ -1,6 +1,6 @@
 # ORPHIC — audio-reactive generative visualizer
 
-Fourteen GPU pattern simulations that react live to **music (MP3/WAV/OGG/M4A)**, your
+Sixteen GPU pattern simulations that react live to **music (MP3/WAV/OGG/M4A)**, your
 **microphone**, or **another tab's audio** (Spotify, YouTube, …), with automatic
 speech-vs-music detection that re-tunes the visuals for voice.
 
@@ -26,7 +26,7 @@ no server, no build, no dependencies). Then:
 | `f` / double-click | fullscreen |
 | `h` | hide the HUD entirely |
 
-## The fourteen patterns
+## The sixteen patterns
 
 | # | scene | system | reacts how |
 |---|---|---|---|
@@ -43,7 +43,9 @@ no server, no build, no dependencies). Then:
 | 11 | **harmony bloom · chroma mandala** | 12-petal flower + roto-zoom feedback echo | each petal is a pitch class sized by its energy (chords are visible shapes), petal hues sit on the circle of fifths, interior rings are a bass→treble frequency ladder, beats step the rotation |
 | 12 | **aurora silk · liquid light** | IQ nested domain warping (f(p+g(p+h(p)))) | each band owns a warp layer — bass folds the sheets, mids the turbulence, treble the crackle; every filament is lit by its own spectrum slice |
 | 13 | **murmuration · dusk flock** | 65k field-coupled boids (no neighbor lists: a 128² velocity/density field drives alignment/cohesion/separation) | kicks flare separation so the cloud bursts and regroups, mids tighten formation, onsets launch a hawk through the flock, and every bird is keyed to one spectrum slice — its band's energy agitates it |
-| 14 | **voice aurora · pitch contour** | live pitch tracking drawn as flowing arcs | speech-only scene: ribbon rides your pitch, sibilance shadows above, consonants spark |
+| 14 | **escher gate · hyperbolic tiling** | {p,q} Poincaré-disk tiling via (p,q,2) triangle-group folds | glides through hyperbolic space on loudness (rests freeze it to embers), re-tessellates every 8 beats or when music returns, tiling depth tiers lit per-frequency (bass = heart, treble = infinite rim), harmonic content thickens the lattice, percussive hits flash the vertices |
+| 15 | **stellar nursery · ember nebula** | raymarched volumetric gyroid gas, emission/absorption | beats detonate shockwave shells through the gas, percussive energy flares the core star, harmonic content makes the gas glow, radius shells lit per-frequency; rests thin it to a dim ember and pull the camera away — the return is a supernova |
+| 16 | **voice aurora · pitch contour** | live pitch tracking drawn as flowing arcs | speech-only scene: ribbon rides your pitch, sibilance shadows above, consonants spark |
 
 ## How it listens
 
@@ -54,6 +56,12 @@ no server, no build, no dependencies). Then:
 - tempo via autocorrelation of the onset-strength signal; beat phase re-anchors
   on strong onsets and coasts through silent gaps
 - pitch via NSDF-style autocorrelation (80–1000 Hz)
+- HPSS (Fitzgerald 2010 median-filter proxy): time-median of the spectrogram
+  ≈ harmonic (sustained) energy, frequency-median ≈ percussive (transient)
+  energy — so scenes can tell chords from drum hits
+- rests: a `quiet` envelope rises ~0.6 s into silence and snaps away on
+  sound; `burst` spikes when music returns after a real rest — scenes freeze,
+  dim or collapse during rests and detonate on the return
 - chroma: per-bin energy folded into 12 pitch classes (55 Hz–5 kHz); scenes
   derive a "key hue" from its circular mean on the circle of fifths, so
   consonant harmony lands on related colors

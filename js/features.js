@@ -15,6 +15,16 @@
     return current + (target - current) * (1 - Math.exp(-dt / k));
   }
 
+  function median9(a) { // insertion sort 9 elements in place, return middle
+    for (let i = 1; i < 9; i++) {
+      const v = a[i];
+      let j = i - 1;
+      while (j >= 0 && a[j] > v) { a[j + 1] = a[j]; j--; }
+      a[j + 1] = v;
+    }
+    return a[4];
+  }
+
   class FeatureExtractor {
     constructor(engine) {
       this.engine = engine;
@@ -41,6 +51,22 @@
       this.pitchHz = 0;        // 0 if unvoiced
       this.pitchNorm = 0;      // log-scaled 80..1000Hz -> 0..1
       this.voiced = 0;         // smoothed voicing confidence
+
+      // HPSS (Fitzgerald 2010, median-filter proxy): harmonic = sustained
+      // tonal energy (horizontal spectrogram ridges), percussive = broadband
+      // transient energy (vertical), harmRatio = balance between them
+      this.harmonic = 0;
+      this.percussive = 0;
+      this.harmRatio = 0.5;
+      this._hpssHist = null;
+      this._hpssIdx = 0;
+      this._med9 = new Uint8Array(9);
+
+      // rests: quiet rises ~0.6s into silence and snaps away on sound;
+      // burst spikes to 1 when music returns after a real rest
+      this.quiet = 0;
+      this.burst = 0;
+      this._quietT = 0;
 
       // chroma: energy folded into 12 pitch classes (C=0), each 0..1
       this.chroma = new Float32Array(12);
@@ -126,6 +152,20 @@
       // ---- chroma (12 pitch classes) ----
       this._updateChroma(freq, binHz, dt);
 
+      // ---- HPSS: harmonic vs percussive energy ----
+      this._updateHPSS(freq, dt);
+
+      // ---- rests: silence detection + return-burst ----
+      const silent = this.rawLevel < 0.06 && this.fluxRaw < 0.004;
+      this.quiet = envFollow(this.quiet, silent ? 1 : 0, 0.6, 0.08, dt);
+      this.burst *= Math.pow(0.5, dt / 0.15);
+      if (silent) {
+        this._quietT += dt;
+      } else {
+        if (this._quietT > 0.45) this.burst = 1;
+        this._quietT = 0;
+      }
+
       // ---- spectral flux + onsets ----
       if (!this._prevSpec) this._prevSpec = new Uint8Array(n);
       let flux = 0;
@@ -187,6 +227,31 @@
 
       // ---- pitch (autocorrelation, time domain) ----
       this._updatePitch(time, eng.ctx ? eng.ctx.sampleRate : 44100, dt);
+    }
+
+    _updateHPSS(freq, dt) {
+      // median across time per bin ≈ harmonic (sustained ridges survive),
+      // median across frequency per frame ≈ percussive (broadband verticals)
+      const N = Math.min(1024, freq.length); // up to ~11 kHz is plenty
+      if (!this._hpssHist) this._hpssHist = new Uint8Array(N * 9);
+      const hist = this._hpssHist, tmp = this._med9, idx = this._hpssIdx;
+      for (let i = 0; i < N; i++) hist[i * 9 + idx] = freq[i];
+      this._hpssIdx = (idx + 1) % 9;
+
+      let hSum = 0, pSum = 0;
+      for (let i = 0; i < N; i++) {
+        for (let k = 0; k < 9; k++) tmp[k] = hist[i * 9 + k];
+        hSum += median9(tmp);
+        for (let k = 0; k < 9; k++) {
+          const j = i + k - 4;
+          tmp[k] = freq[j < 0 ? 0 : j >= N ? N - 1 : j];
+        }
+        pSum += median9(tmp);
+      }
+      const hAvg = hSum / (N * 255), pAvg = pSum / (N * 255);
+      this.harmonic = envFollow(this.harmonic, Math.min(1, hAvg * 3.5), 0.04, 0.30, dt);
+      this.percussive = envFollow(this.percussive, Math.min(1, pAvg * 3.5), 0.012, 0.10, dt);
+      this.harmRatio = envFollow(this.harmRatio, hAvg / (hAvg + pAvg + 1e-6), 0.25, 0.25, dt);
     }
 
     _updateChroma(freq, binHz, dt) {
