@@ -35,8 +35,10 @@
     // night sky: near-black with a whisper of color, stars above
     vec3 col = mix(vec3(0.012, 0.014, 0.030), vec3(0.002, 0.002, 0.008),
                    pow(p.y, 0.7));
-    // twinkling stars, drifting almost imperceptibly with the music's time
-    vec2 sgrid = (p + vec2(uPhaseLevel * 0.0015, 0.0)) * uRes / 4.0;
+    // twinkling stars, gliding slowly leftward so the sky reads as the camera
+    // panning right through space (steady on uTime, not the music, so it never
+    // stalls in quiet passages)
+    vec2 sgrid = (p + vec2(uTime * 0.005, 0.0)) * uRes / 4.0;
     float sh = hash12(floor(sgrid));
     // independent hash for the twinkle: the existence hash is ~1.0 for every
     // visible star, so reusing it makes them all blink in unison
