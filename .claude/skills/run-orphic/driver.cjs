@@ -103,7 +103,7 @@ app.whenReady().then(() => {
       else if (msg.startsWith('SHOT READY')) {
         chain = chain.then(() => capture(win, label(secs * 60)))
           .then(() => app.exit(0));
-      }
+      } else console.log('PAGE: ' + msg); // scene debug telemetry flows through
     });
     win.loadURL(`${INDEX}#shot-${idx}-${secs}`);
     // shot mode runs ~8 sim-frames per rAF tick → ~8x faster than real time

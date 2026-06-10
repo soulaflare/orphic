@@ -64,7 +64,7 @@
       vec2 p = hash22(vec2(float(i) * 13.7, uSeed));
       p = p * 0.8 + 0.1;
       float d = length(vUV - p);
-      if (d < 0.07) A = max(A, vnoise(vUV * 110.0 + uSeed) * smoothstep(0.07, 0.02, d));
+      if (d < 0.10) A = max(A, vnoise(vUV * 110.0 + uSeed) * 0.6 * smoothstep(0.10, 0.03, d));
     }
     fragColor = vec4(A, 0.0, 0.0, 1.0);
   }`;
@@ -122,21 +122,47 @@
       const coverT = glc.target(4, 4);
       const coverBuf = new Float32Array(64);
       let beatCount = 0, reseedTimer = 0, coverTimer = 0;
-      let muBias = 0, covOver = 0, covSmooth = 0.4, covRaw = -1; // homeostasis state
+      // covSmooth starts low so the establishment shield (gentle regime, no
+      // erosion) covers the young colony until real probe readings arrive
+      let muBias = 0, covOver = 0, covUnder = 0, covSmooth = 0.15, covRaw = -1; // homeostasis state
+      let covVel = 0, covPrev = 0.15, deadT = 0; // collapse detection
       const splat = { x: 0.5, y: 0.5, r: 0, amt: 0 };
 
       function seed() {
-        pInit.use().f('uSeed', Math.random() * 100);
-        glc.draw(pInit, state.read);
-        // warm-up: the garden should already be alive when the scene appears
-        for (let i = 0; i < 80; i++) {
-          pSim.use()
-              .v2('uTexel', 1 / state.read.w, 1 / state.read.h)
-              .f('uMu', 0.140).f('uSigma', 0.0145).f('uDtL', 0.22)
-              .f('uErosion', 0).v4('uSplat', 0, 0, 0, 0)
-              .tex('uState', state.read.tex, 0);
-          glc.draw(pSim, state.write);
-          state.swap();
+        // warm-up survival is luck-of-the-draw (the blob boundary has to
+        // carve viable rings before the interior dies), so verify the dish
+        // came out alive and redraw the lottery if not — a dead start used
+        // to mean a black screen with flashing reseeds for many seconds
+        for (let attempt = 0; attempt < 4; attempt++) {
+          pInit.use().f('uSeed', Math.random() * 100);
+          glc.draw(pInit, state.read);
+          for (let i = 0; i < 100; i++) {
+            // anneal sigma wide→native: a wide growth zone accepts whatever
+            // density the noisy seed lands at (the native zone is ±0.015 —
+            // a knife edge no seed amplitude reliably hits), then tightens
+            // so the blobs differentiate into creatures
+            const sg = 0.030 - 0.0155 * Math.min(1, i / 60);
+            pSim.use()
+                .v2('uTexel', 1 / state.read.w, 1 / state.read.h)
+                .f('uMu', 0.140).f('uSigma', sg).f('uDtL', 0.22)
+                .f('uErosion', 0).v4('uSplat', 0, 0, 0, 0)
+                .tex('uState', state.read.tex, 0);
+            glc.draw(pSim, state.write);
+            state.swap();
+          }
+          pCover.use().tex('uState', state.read.tex, 0);
+          glc.draw(pCover, coverT);
+          const gl = glc.gl;
+          gl.bindFramebuffer(gl.FRAMEBUFFER, coverT.fbo);
+          let cov = 1; // if readback is unsupported, accept the attempt
+          try {
+            gl.readPixels(0, 0, 4, 4, gl.RGBA, gl.FLOAT, coverBuf);
+            cov = 0;
+            for (let i = 0; i < 16; i++) cov += coverBuf[i * 4];
+            cov /= 16;
+          } catch (e) { /* run unverified */ }
+          gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+          if (cov > 0.08) break;
         }
       }
 
@@ -163,17 +189,31 @@
         }
         if (covRaw < 0) return;
         covSmooth += (covRaw - covSmooth) * (1 - Math.exp(-dt / 2.5));
+        covVel += ((covSmooth - covPrev) / Math.max(dt, 1e-3) - covVel) * (1 - Math.exp(-dt / 1.0));
+        covPrev = covSmooth;
         let err = covSmooth - target;
-        err = Math.abs(err) < 0.04 ? 0 : err - Math.sign(err) * 0.04;
+        err = Math.abs(err) < 0.025 ? 0 : err - Math.sign(err) * 0.025;
         // over target: lower mu, gently — the patchy erosion wind does the
-        // visible carving. Under target: RELAX the bias back toward 0 fast;
-        // the default regime is already the growth-friendliest, and pushing
-        // mu above it suppresses regrowth (that sign error once starved the
-        // whole dish to black).
-        if (err > 0) muBias = Math.max(-0.030, muBias - err * dt * 0.020);
-        else if (err < 0) muBias = Math.min(0, muBias - err * dt * 0.080);
-        if (covSmooth < 0.10) muBias = Math.min(0, muBias + dt * 0.06); // never let it die
+        // visible carving (shed a positive lift much faster: releasing is
+        // not pulling). Under target: raise mu toward a small lift — an
+        // ESTABLISHED colony packs denser at higher mu, which is the only
+        // way past the rule's natural ~0.33 saturation toward "almost full".
+        // A sparse colony dies at higher mu (u can't reach it), so the lift
+        // is only allowed above 0.24 and forced off when starving.
+        const lift = covSmooth > 0.24 ? 0.026 : 0;
+        // shallow mu clamp: the global pull only trims — the spatial work of
+        // the retreat belongs to the erosion wind (covOver below), which
+        // carves continents and voids instead of thinning uniformly
+        if (err > 0) muBias = Math.max(-0.028, muBias - err * dt * (muBias > 0 ? 0.10 : 0.075));
+        else if (muBias > 0 && covVel < -0.015) {
+          // release valve: coverage falling while lifted means the lift is
+          // outrunning what the colony can densify to — holding it because
+          // "we're under target" is the death spiral that killed the dish
+          muBias = Math.max(0, muBias - dt * 0.10);
+        } else if (err < 0) muBias = Math.min(lift, muBias - err * dt * 0.080);
+        if (covSmooth < 0.15) muBias = Math.min(0, muBias + dt * 0.06); // never let it die
         covOver += ((err > 0 ? err : 0) - covOver) * (1 - Math.exp(-dt / 2.0));
+        covUnder += ((err < 0 ? -err : 0) - covUnder) * (1 - Math.exp(-dt / 2.0));
       }
 
       return {
@@ -189,19 +229,34 @@
           if (!state) return;
           const f = audio.f;
 
-          // the tide: the density target itself swings between sparse (~0.16)
-          // and lush (~0.56) over ~25s of loud music (slower when quiet), so
-          // the garden visibly floods out and recedes instead of parking full
-          // probe units undercount what the eye sees (display lighting blooms
-          // them), so 0.44 already reads lush and 0.12 reads sparse
-          const tide = 0.28 + 0.16 * Math.sin(f.phaseLevel * 0.20);
+          // the tide: the density target swings between sparse and lush over
+          // ~25s of loud music (slower when quiet). Probe units undercount
+          // what the eye sees — 0.50 already reads ~80% full, 0.18 ~20%
+          const tide = 0.32 + 0.18 * Math.sin(f.phaseLevel * 0.16);
           homeostasis(dt, tide);
-          const mu = 0.138 + 0.014 * Math.sin(f.phaseLevel * 0.21)
-                   + f.bass * 0.014 - f.treble * 0.008 + muBias;
-          const sigma = 0.0140 + 0.0030 * Math.sin(f.phaseBass * 0.16 + 1.0)
-                      + f.centroid * 0.005 + audio.c.speechProb * 0.004;
+
+          // dead-man's watchdog: empty for 4s despite the lifeline means the
+          // dish is unrecoverable by splats alone — redo the verified seed
+          deadT = covSmooth < 0.05 ? deadT + dt : 0;
+          if (deadT > 4) {
+            deadT = 0;
+            seed();
+            covSmooth = 0.15; covPrev = 0.15; covRaw = -1;
+            covVel = 0; muBias = 0; covOver = 0; covUnder = 0;
+          }
+
+          // establishment: a young colony (probe < ~0.22) gets the textbook
+          // regime — music swings on mu/sigma can kill fresh blobs, which
+          // reads as a black screen with flashes. Modulation fades in as the
+          // colony takes hold.
+          const est = Math.max(0, Math.min(1, (covSmooth - 0.10) / 0.12));
+          const mu = 0.138 + est * (0.014 * Math.sin(f.phaseLevel * 0.21)
+                   + f.bass * 0.014 - f.treble * 0.008) + muBias;
+          const sigma = 0.0145 + est * (0.0030 * Math.sin(f.phaseBass * 0.16 + 1.0)
+                      + f.centroid * 0.005 + audio.c.speechProb * 0.004);
           // rests nearly freeze time — the garden holds its breath
-          const dtL = (0.10 + f.level * 0.14) * (1 - f.quiet * 0.85);
+          // (slightly slower clock overall: the colony should creep, not flood)
+          const dtL = (0.09 + f.level * 0.12) * (1 - f.quiet * 0.85);
 
           splat.amt = 0;
           reseedTimer += dt;
@@ -216,28 +271,42 @@
             const ang = beatCount * 2.399963;
             splat.x = 0.5 + Math.cos(ang) * 0.28;
             splat.y = 0.5 + Math.sin(ang) * 0.28;
-            splat.r = 0.05 + f.bass * 0.05;
+            // blob viability scales with the kernel: below ~2R cells (~0.08
+            // uv on the 1/7 grid) a sown blob just flashes and dies
+            splat.r = 0.08 + f.bass * 0.05;
             // beats carve craters when the dish is over the tide's target,
-            // sow when under — the push and pull rides the music itself
-            // (every third beat carves regardless: a full dish needs death)
+            // sow when under — the push and pull rides the music itself.
+            // Every third beat carves too, but never near the 20% floor.
             const crowded = covSmooth > tide + 0.10;
-            splat.amt = (beatCount % 3 === 2 || crowded) ? -0.9 : 0.85;
+            splat.amt = ((beatCount % 3 === 2 && covSmooth > 0.25) || crowded) ? -0.9 : 0.5;
             reseedTimer = 0;
-          } else if (reseedTimer > 7 || (covSmooth < 0.10 && reseedTimer > 1.5)) {
+          } else if (reseedTimer > 7 || (covSmooth < 0.15 && reseedTimer > 1.0)) {
             // extinction insurance — and a fast lifeline when the dish is
             // starving, so "black screen with blobs" never lingers
             splat.x = 0.15 + Math.random() * 0.7;
             splat.y = 0.15 + Math.random() * 0.7;
-            splat.r = 0.05;
-            splat.amt = 0.8;
+            splat.r = 0.10; // must be kernel-viable or the lifeline is a lie
+            splat.amt = 0.5; // near the growth optimum, not far above it
             reseedTimer = 0;
           }
+
+          // resistance grows with the colony: erosion scales with coverage
+          // (logistic deceleration — fast early creep, hard fight near full),
+          // slams in above the ~80%-visual ceiling, and is gated off entirely
+          // near the 20% floor so the battle never collapses to black
+          // (covUnder eases the resistance off when the tide invites growth —
+          // mu can only suppress, so without relief the colony never climbs)
+          const ceiling = Math.max(0, covSmooth - 0.52);
+          const floorGate = Math.max(0, Math.min(1, (covSmooth - 0.12) / 0.08));
+          const erosion = floorGate * Math.max(0, 0.05 + covSmooth * 0.22
+              + f.percussive * 0.08 + covOver * 1.6 + ceiling * 2.0
+              - covUnder * 0.8);
 
           pSim.use();
           M.audioUniforms(pSim, audio, t);
           pSim.v2('uTexel', 1 / state.read.w, 1 / state.read.h)
               .f('uMu', mu).f('uSigma', sigma).f('uDtL', dtL)
-              .f('uErosion', 0.14 + f.percussive * 0.08 + covOver * 0.9)
+              .f('uErosion', erosion)
               .v4('uSplat', splat.x, splat.y, splat.r, splat.amt)
               .tex('uState', state.read.tex, 0);
           glc.draw(pSim, state.write);
