@@ -170,8 +170,8 @@
             primed = true;
             for (let i = 0; i < 6; i++) {
               const a = (i / 6) * Math.PI * 2 + Math.random();
-              const px = 0.5 + Math.cos(a) * (0.12 + Math.random() * 0.15);
-              const py = 0.5 + Math.sin(a) * (0.12 + Math.random() * 0.15);
+              const px = 0.5 + Math.cos(a) * (0.18 + Math.random() * 0.12);
+              const py = 0.5 + Math.sin(a) * (0.18 + Math.random() * 0.12);
               doSplat(px, py, Math.cos(a) * 260, Math.sin(a) * 260,
                       hsv((i / 6 + Math.random() * 0.08) % 1, 0.85, 0.55), 0.008);
             }
@@ -190,11 +190,12 @@
           }
           if (f.beat > 0.9) {
             beatCount++;
-            const n = 5;
+            const n = 6;
             const hue = (beatCount * 0.13 + f.centroid * 0.3) % 1;
             // the ring breathes across beats so ink reaches the whole frame,
-            // not one orbit — successive beats paint different territory
-            const ring = 0.12 + 0.12 * Math.sin(beatCount * 0.53);
+            // not one orbit — but never collapses to centre: the middle stays
+            // a dark eye the ink billows around, only fed by swirl
+            const ring = 0.24 + 0.08 * Math.sin(beatCount * 0.53);
             for (let i = 0; i < n; i++) {
               const a = (i / n) * Math.PI * 2 + beatCount * 0.7;
               const c = hsv((hue + i * 0.055) % 1, 0.85, 0.6 + f.bass * 0.4);
@@ -205,7 +206,10 @@
             }
           }
           if (f.onset > 0.9 && f.beat <= 0.9) {
-            const x = 0.15 + Math.random() * 0.7, y = 0.15 + Math.random() * 0.7;
+            // off-centre like the beat ring — the middle stays a dark eye
+            const oa = Math.random() * Math.PI * 2;
+            const or = 0.18 + Math.random() * 0.16;
+            const x = 0.5 + Math.cos(oa) * or, y = 0.5 + Math.sin(oa) * or;
             const a = Math.random() * Math.PI * 2;
             const c = hsv((f.centroid * 0.8 + 0.55) % 1, 0.9, 0.4);
             doSplat(x, y, Math.cos(a) * 280, Math.sin(a) * 280, c, 0.002);
@@ -220,8 +224,8 @@
                 ? 0.25 + f.pitchNorm * 0.5
                 : 0.5 + Math.sin(a) * 0.27;
               const hue = (t * 0.02 + e * 0.45 + f.centroid * 0.25) % 1;
-              const c = hsv(hue, 0.8, 0.10 + f.level * 0.35);
-              doSplat(px, py, -Math.sin(a) * 250 * f.level, Math.cos(a) * 250 * f.level, c, 0.0018);
+              const c = hsv(hue, 0.8, 0.14 + f.level * 0.40);
+              doSplat(px, py, -Math.sin(a) * 250 * f.level, Math.cos(a) * 250 * f.level, c, 0.0022);
             }
           }
 
