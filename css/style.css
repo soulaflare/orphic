@@ -3,7 +3,10 @@
   --fg: #e8e6f0;
   --dim: rgba(232, 230, 240, 0.45);
   --accent: #8be9fd;
-  --glass: rgba(10, 8, 20, 0.55);
+  /* no backdrop-filter anywhere: blurring a canvas that repaints at 60fps
+     forces a compositor blur pass per element per frame — deep opacity
+     gives the same glass read for free */
+  --glass: rgba(10, 8, 20, 0.8);
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -55,9 +58,11 @@ html, body {
     breathe 9s ease-in-out infinite alternate,
     rise 1.2s cubic-bezier(0.16, 1, 0.3, 1) 0.1s backwards;
 }
+/* hue/brightness only — an animated drop-shadow would re-blur the whole
+   title every frame on top of the live canvas */
 @keyframes shimmer {
-  from { filter: hue-rotate(0deg) brightness(1) drop-shadow(0 0 22px rgba(139, 233, 253, 0.35)); }
-  to   { filter: hue-rotate(40deg) brightness(1.15) drop-shadow(0 0 34px rgba(255, 121, 198, 0.4)); }
+  from { filter: hue-rotate(0deg) brightness(1); }
+  to   { filter: hue-rotate(40deg) brightness(1.18); }
 }
 @keyframes breathe {
   from { transform: scale(1); }
@@ -86,17 +91,27 @@ html, body {
   border: 1px solid transparent;
   border-radius: 999px;
   background:
-    linear-gradient(rgba(8, 6, 18, 0.62), rgba(8, 6, 18, 0.62)) padding-box,
+    linear-gradient(rgba(8, 6, 18, 0.82), rgba(8, 6, 18, 0.82)) padding-box,
     linear-gradient(110deg, #8be9fd, #bd93f9 45%, #ff79c6 80%) border-box;
   color: var(--fg);
   cursor: pointer;
   font-family: inherit;
-  backdrop-filter: blur(12px);
-  animation:
-    glow 3.2s ease-in-out infinite alternate,
-    rise 1.2s cubic-bezier(0.16, 1, 0.3, 1) 0.5s backwards;
+  box-shadow: 0 0 26px rgba(139, 233, 253, 0.22), 0 0 70px rgba(189, 147, 249, 0.12);
+  animation: rise 1.2s cubic-bezier(0.16, 1, 0.3, 1) 0.5s backwards;
   transition: transform 0.25s ease, box-shadow 0.25s ease;
 }
+/* the breathing glow lives on a pseudo-element and animates only opacity,
+   so the pulse is compositor-only (animating box-shadow repaints) */
+.cta::after {
+  content: '';
+  position: absolute; inset: -1px;
+  border-radius: inherit;
+  z-index: -1;
+  box-shadow: 0 0 40px rgba(139, 233, 253, 0.4), 0 0 96px rgba(255, 121, 198, 0.22);
+  opacity: 0;
+  animation: glowfade 3.2s ease-in-out infinite alternate;
+}
+@keyframes glowfade { from { opacity: 0; } to { opacity: 1; } }
 .cta:hover {
   transform: translateY(-2px) scale(1.02);
   box-shadow:
@@ -104,10 +119,6 @@ html, body {
     0 0 110px rgba(189, 147, 249, 0.35);
 }
 .cta:active { transform: translateY(0) scale(0.99); }
-@keyframes glow {
-  from { box-shadow: 0 0 26px rgba(139, 233, 253, 0.22), 0 0 70px rgba(189, 147, 249, 0.12); }
-  to   { box-shadow: 0 0 40px rgba(139, 233, 253, 0.4),  0 0 96px rgba(255, 121, 198, 0.22); }
-}
 .cta .cta-label { font-size: 1.06rem; letter-spacing: 0.22em; text-transform: uppercase; font-weight: 300; }
 .cta .sub { font-size: 0.68rem; color: var(--dim); letter-spacing: 0.1em; }
 
@@ -152,7 +163,6 @@ html, body {
   border-radius: 999px;
   background: var(--glass); border: 1px solid rgba(255, 255, 255, 0.12);
   color: var(--fg); cursor: pointer; font-family: inherit;
-  backdrop-filter: blur(8px);
   transition: border-color 0.25s ease, box-shadow 0.25s ease;
 }
 #scene-pill:hover {
@@ -182,7 +192,6 @@ html, body {
   font-size: 0.66rem; letter-spacing: 0.18em; text-transform: uppercase;
   padding: 0.38rem 0.85rem; border-radius: 999px;
   background: var(--glass); border: 1px solid rgba(255,255,255,0.12);
-  backdrop-filter: blur(6px);
 }
 .badge.mode-music  { color: #8be9fd; border-color: rgba(139,233,253,0.4); }
 .badge.mode-speech { color: #ff79c6; border-color: rgba(255,121,198,0.4); }
@@ -204,7 +213,6 @@ html, body {
   padding: 0.38rem 0.85rem; border-radius: 999px;
   background: var(--glass); border: 1px solid rgba(255,255,255,0.12);
   color: var(--dim); cursor: pointer; font-family: inherit;
-  backdrop-filter: blur(6px);
   transition: all 0.2s;
 }
 .hud-btn:hover { color: var(--fg); border-color: rgba(255,255,255,0.35); }
@@ -228,9 +236,8 @@ html, body {
   border: 1px solid transparent;
   border-radius: 20px;
   background:
-    linear-gradient(rgba(8, 6, 18, 0.78), rgba(8, 6, 18, 0.78)) padding-box,
+    linear-gradient(rgba(8, 6, 18, 0.92), rgba(8, 6, 18, 0.92)) padding-box,
     linear-gradient(130deg, rgba(139,233,253,0.7), rgba(189,147,249,0.5) 50%, rgba(255,121,198,0.7)) border-box;
-  backdrop-filter: blur(18px);
   z-index: 28;
   transition: opacity 0.3s ease, transform 0.3s ease, visibility 0.3s;
 }
@@ -301,7 +308,6 @@ html, body {
   background: var(--glass); border: 1px solid rgba(255, 121, 198, 0.45);
   font-size: 0.74rem; letter-spacing: 0.06em; text-align: center;
   z-index: 25;
-  backdrop-filter: blur(6px);
   transition: opacity 0.4s ease, visibility 0.4s;
 }
 #toast.hidden { opacity: 0; visibility: hidden; }

@@ -154,6 +154,9 @@
     let lastT = performance.now() / 1000;
     let hudFade = 0;
     let hudBeatHeld = false;
+    // last-written HUD values: DOM writes (even no-op textContent/className
+    // assignments) invalidate style every frame — only write on change
+    let hudMode = '', hudBpm = '', hudCycle = -1;
 
     function setScene(idx, why) {
       const defs = M.scenes;
@@ -397,12 +400,24 @@
       hudFade -= dt;
       if (hudFade < 0) ui.hud.classList.add('asleep');
       else {
-        ui.modeBadge.textContent = classifier.mode;
-        ui.modeBadge.className = 'badge mode-' + classifier.mode;
-        ui.bpmText.textContent = features.bpm > 0 && features.beatConf > 0.2
+        if (classifier.mode !== hudMode) {
+          hudMode = classifier.mode;
+          ui.modeBadge.textContent = hudMode;
+          ui.modeBadge.className = 'badge mode-' + hudMode;
+        }
+        const bpm = features.bpm > 0 && features.beatConf > 0.2
           ? Math.round(features.bpm) + ' bpm' : '·';
-        ui.cycleBar.style.transform = 'scaleX(' +
-          (uiPreview ? 0.4 : autoCycle && !idle ? Math.min(1, cycleTimer / CYCLE_SECONDS) : 0) + ')';
+        if (bpm !== hudBpm) {
+          hudBpm = bpm;
+          ui.bpmText.textContent = bpm;
+        }
+        // quantized to ~1px steps so the bar animates with a few writes/s
+        const cyc = Math.round(
+          (uiPreview ? 0.4 : autoCycle && !idle ? Math.min(1, cycleTimer / CYCLE_SECONDS) : 0) * 200) / 200;
+        if (cyc !== hudCycle) {
+          hudCycle = cyc;
+          ui.cycleBar.style.transform = 'scaleX(' + cyc + ')';
+        }
         const beatNow = features.beat > 0.9;
         if (beatNow && !hudBeatHeld) {
           ui.beatDot.classList.remove('pulse');
