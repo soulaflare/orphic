@@ -57,10 +57,14 @@
       ui.toast.classList.add('hidden');
     }
 
-    // visual test: index.html#shot-N → scene N with synthetic audio, for screenshots
-    const shotMatch = location.hash.match(/^#shot-(\d+)$/);
+    // visual test: index.html#shot-N[-SECS] → scene N with synthetic audio
+    // for SECS simulated seconds (default 10), logging "SHOT T <frames>"
+    // every 10 sim-seconds so a driver can take timed captures — see
+    // .claude/skills/run-orphic
+    const shotMatch = location.hash.match(/^#shot-(\d+)(?:-(\d+))?$/);
     if (shotMatch) {
       const idx = parseInt(shotMatch[1], 10);
+      const limit = (parseInt(shotMatch[2], 10) || 10) * 60;
       const dpr = 1;
       glc.resize(Math.round(canvas.clientWidth * dpr), Math.round(canvas.clientHeight * dpr));
       ui.overlay.style.display = 'none'; // no fade — screenshots must see the canvas
@@ -71,8 +75,9 @@
       function fakeFrame() {
         // headless rAF only delivers ~40 ticks before the screenshot, so run
         // several sim frames per tick to capture a developed state
-        for (let k = 0; k < 8 && frames < 600; k++) stepOnce();
-        if (frames < 600) requestAnimationFrame(fakeFrame);
+        for (let k = 0; k < 8 && frames < limit; k++) stepOnce();
+        if (frames % 600 === 0 && frames < limit) console.log('SHOT T ' + frames);
+        if (frames < limit) requestAnimationFrame(fakeFrame);
         else console.log('SHOT READY: ' + M.scenes[idx].name);
       }
       function stepOnce() {
