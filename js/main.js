@@ -161,6 +161,8 @@
     }
 
     let active = null, activeIdx = -1;
+    let pendingIdx = -1; // switch requested mid-transition — applied when it lands
+    const trans = new M.Transition(glc);
     let autoCycle = true;
     let cycleTimer = 0;
     const CYCLE_SECONDS = 45;
@@ -171,15 +173,12 @@
     // assignments) invalidate style every frame — only write on change
     let hudMode = '', hudBpm = '', hudCycle = -1;
 
-    function setScene(idx, why) {
+    // relative navigation steps from where we're headed, not where we are —
+    // pressing next twice mid-blend must advance two scenes, not one
+    function targetIdx() { return pendingIdx >= 0 ? pendingIdx : activeIdx; }
+
+    function hudScene(idx) {
       const defs = M.scenes;
-      if (!defs.length) return;
-      idx = ((idx % defs.length) + defs.length) % defs.length;
-      if (idx === activeIdx) return;
-      if (active && active.dispose) active.dispose();
-      activeIdx = idx;
-      active = defs[idx].create(glc);
-      if (active.resize) active.resize(glc.width, glc.height);
       ui.sceneName.textContent = defs[idx].name.split(' · ')[0];
       ui.sceneName.classList.remove('flash');
       void ui.sceneName.offsetWidth; // restart animation
@@ -192,6 +191,27 @@
           cell.scrollIntoView({ block: 'nearest' }); // panel scrolls on short windows
         }
       }
+    }
+
+    function setScene(idx, why) {
+      const defs = M.scenes;
+      if (!defs.length) return;
+      idx = ((idx % defs.length) + defs.length) % defs.length;
+      if (trans.running) {
+        // mid-blend: flush the current dissolve fast and queue this switch —
+        // rapid presses just retarget the queue, skipping intermediates
+        pendingIdx = idx === activeIdx ? -1 : idx;
+        if (pendingIdx >= 0) trans.hurry();
+        hudScene(idx);
+        cycleTimer = 0;
+        return;
+      }
+      if (idx === activeIdx) return;
+      if (active) trans.start(active); // outgoing scene lives on in the blender
+      activeIdx = idx;
+      active = defs[idx].create(glc);
+      if (active.resize) active.resize(glc.width, glc.height);
+      hudScene(idx);
       cycleTimer = 0;
     }
 
@@ -317,16 +337,16 @@
         e.preventDefault();
         if (onLanding) startSystem();
         else if (panelOpen) { disableAuto(); togglePanel(false); } // pick the highlighted one
-        else if (e.key === ' ') setScene(activeIdx + 1);           // space skips while playing
+        else if (e.key === ' ') setScene(targetIdx() + 1);         // space skips while playing
       }
-      else if (e.key === 'ArrowRight' || e.key === 'n') setScene(activeIdx + 1);
-      else if (e.key === 'ArrowLeft' || e.key === 'p') setScene(activeIdx - 1);
+      else if (e.key === 'ArrowRight' || e.key === 'n') setScene(targetIdx() + 1);
+      else if (e.key === 'ArrowLeft' || e.key === 'p') setScene(targetIdx() - 1);
       else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         // with the pattern panel open, vertical arrows step by grid row
         if (!panelOpen) return;
         e.preventDefault(); // don't scroll the panel — selection drives it
         const cols = getComputedStyle(ui.sceneGrid).gridTemplateColumns.split(' ').length;
-        setScene(activeIdx + (e.key === 'ArrowDown' ? cols : -cols));
+        setScene(targetIdx() + (e.key === 'ArrowDown' ? cols : -cols));
       }
       else if (e.key === 'a') ui.autoBtn.click();
       else if (e.key === 's') togglePanel();
@@ -435,7 +455,10 @@
 
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
       const w = Math.round(canvas.clientWidth * dpr), h = Math.round(canvas.clientHeight * dpr);
-      if (glc.resize(w, h) && active && active.resize) active.resize(w, h);
+      if (glc.resize(w, h)) {
+        if (active && active.resize) active.resize(w, h);
+        trans.resize(w, h);
+      }
 
       features.update(dt);
       classifier.update(dt);
@@ -504,7 +527,16 @@
       if (!active && M.scenes.length) setScene(idle && idleScenes.length ? idleScenes[0] : 0);
       if (active) {
         if (active.update) active.update(dt, audio, now);
-        active.render(null, audio, now);
+        if (trans.running) {
+          // blend outgoing → incoming; chain a queued switch when it lands
+          if (trans.frame(dt, active, audio, now) && pendingIdx >= 0) {
+            const next = pendingIdx;
+            pendingIdx = -1;
+            setScene(next);
+          }
+        } else {
+          active.render(null, audio, now);
+        }
       }
     }
     requestAnimationFrame(frame);

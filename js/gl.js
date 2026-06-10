@@ -154,7 +154,7 @@
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, wrap);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, wrap);
-      if (this.glc.floatOK) {
+      if (this.glc.floatOK && !this.opts.byte) {
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, w, h, 0, gl.RGBA, gl.HALF_FLOAT, null);
       } else {
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);

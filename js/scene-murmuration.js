@@ -514,8 +514,9 @@
           }
 
           const f = audio.f;
-          gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-          gl.viewport(0, 0, glc.width, glc.height);
+          // honor `out` like glc.draw does — transitions render scenes offscreen
+          gl.bindFramebuffer(gl.FRAMEBUFFER, out ? out.fbo : null);
+          gl.viewport(0, 0, out ? out.w : glc.width, out ? out.h : glc.height);
           gl.useProgram(pDraw.handle);
           pDraw._pendingTex.length = 0;
           pDraw.i('uDim', DIM).f('uTime', t)
