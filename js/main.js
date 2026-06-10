@@ -23,17 +23,14 @@
       sourceName: document.getElementById('source-name'),
       modeBadge: document.getElementById('mode-badge'),
       bpmBadge: document.getElementById('bpm-badge'),
-      fileBtn: document.getElementById('btn-file'),
-      micBtn: document.getElementById('btn-mic'),
       systemBtn: document.getElementById('btn-system'),
-      fileInput: document.getElementById('file-input'),
       autoBtn: document.getElementById('btn-auto'),
       helpBar: document.getElementById('help-bar'),
       toast: document.getElementById('toast'),
     };
 
     // Desktop shell (Electron): system audio is captured natively from the
-    // OS — reword the capture button, which is browser-tab-specific otherwise.
+    // OS — reword the browser-specific hint under the capture button.
     const desktop = !!(window.orphic && window.orphic.isElectron);
     if (desktop) {
       const subs = {
@@ -41,7 +38,6 @@
         win32: 'everything playing on this pc',
         linux: 'everything playing — pipewire / pulseaudio',
       };
-      ui.systemBtn.childNodes[0].textContent = 'capture system audio';
       ui.systemBtn.querySelector('.sub').textContent =
         subs[window.orphic.platform] || 'everything playing on this device';
     }
@@ -191,11 +187,6 @@
     }
 
     // ---- input wiring ----
-    ui.fileBtn.addEventListener('click', () => ui.fileInput.click());
-    ui.fileInput.addEventListener('change', e => {
-      if (e.target.files[0]) startFile(e.target.files[0]);
-    });
-    ui.micBtn.addEventListener('click', startMic);
     ui.systemBtn.addEventListener('click', startSystem);
     ui.autoBtn.addEventListener('click', () => {
       autoCycle = !autoCycle;
@@ -203,24 +194,6 @@
       ui.autoBtn.textContent = autoCycle ? 'auto-cycle: on' : 'auto-cycle: off';
     });
 
-    async function startFile(file) {
-      try {
-        await engine.loadFile(file);
-        ui.overlay.classList.add('hidden');
-        ui.sourceName.textContent = file.name.replace(/\.[^.]+$/, '');
-      } catch (err) {
-        alert('Could not play file: ' + err.message);
-      }
-    }
-    async function startMic() {
-      try {
-        await engine.useMic();
-        ui.overlay.classList.add('hidden');
-        ui.sourceName.textContent = 'live microphone';
-      } catch (err) {
-        alert('Microphone unavailable: ' + err.message);
-      }
-    }
     async function startSystem() {
       try {
         await engine.useSystemAudio();
@@ -244,22 +217,10 @@
     };
     engine.onCaptureSound = hideToast;
 
-    // drag & drop anywhere
-    window.addEventListener('dragover', e => { e.preventDefault(); document.body.classList.add('dragging'); });
-    window.addEventListener('dragleave', e => { if (e.target === document.body || e.relatedTarget === null) document.body.classList.remove('dragging'); });
-    window.addEventListener('drop', e => {
-      e.preventDefault();
-      document.body.classList.remove('dragging');
-      const f = e.dataTransfer.files && e.dataTransfer.files[0];
-      if (f && f.type.startsWith('audio')) startFile(f);
-      else if (f) startFile(f); // try anyway (m4a sometimes has odd MIME)
-    });
-
     // keyboard
     window.addEventListener('keydown', e => {
       if (e.key === 'ArrowRight' || e.key === 'n') setScene(activeIdx + 1);
       else if (e.key === 'ArrowLeft' || e.key === 'p') setScene(activeIdx - 1);
-      else if (e.key === ' ') { e.preventDefault(); engine.togglePlayback(); }
       else if (e.key === 'a') ui.autoBtn.click();
       else if (e.key === 'f') toggleFullscreen();
       else if (e.key === 'h') ui.hud.classList.toggle('hidden-hud');
@@ -271,8 +232,74 @@
     }
     canvas.addEventListener('dblclick', toggleFullscreen);
 
-    // mouse wakes the HUD
-    window.addEventListener('mousemove', () => { hudFade = 3.5; ui.hud.classList.remove('asleep'); ui.helpBar.classList.remove('asleep'); });
+    // mouse wakes the HUD (not on the landing screen — nothing to control yet)
+    window.addEventListener('mousemove', () => {
+      if (engine.mode === 'none') return;
+      hudFade = 3.5;
+      ui.hud.classList.remove('asleep');
+      ui.helpBar.classList.remove('asleep');
+    });
+
+    // ---- idle attract mode ----
+    // Before any capture starts, the landing shows a real scene breathing to
+    // a gentle synthetic groove (runs AFTER features.update so it overrides
+    // the silence-derived values; stops the moment a source is live).
+    const IDLE_NAMES = ['stellar nursery', 'star river', 'aurora veil', 'ink nebula'];
+    const idleScenes = IDLE_NAMES
+      .map(n => M.scenes.findIndex(d => d.name.includes(n)))
+      .filter(i => i >= 0);
+    const IDLE_CYCLE_SECONDS = 26;
+    let idleT = Math.random() * 60, idleCycle = 0, idleNext = 1;
+    function idleDrive(dt) {
+      idleT += dt;
+      const f = features, t = idleT;
+      const swell = 0.5 + 0.5 * Math.sin(t * 0.45);                      // ~14 s breath
+      const pulse = Math.pow(Math.max(0, Math.sin(t * 3.42)), 6.0);      // soft pulse every ~1.8 s
+      f.level = 0.28 + 0.16 * swell;
+      f.bass = 0.26 + 0.22 * swell + 0.18 * pulse;
+      f.bassFast = 0.45 * pulse;
+      f.mid = 0.22 + 0.14 * Math.sin(t * 0.31 + 1.2);
+      f.treble = 0.16 + 0.12 * Math.sin(t * 0.53 + 2.4);
+      f.centroid = 0.36 + 0.12 * Math.sin(t * 0.21);
+      f.flux = 0.015 + 0.012 * swell;
+      f.onset = 0;
+      f.beat = 0.5 * pulse;
+      f.beatPhase = (t * 3.42 / (2 * Math.PI)) % 1;
+      f.beatConf = 0.15; // below the HUD's display threshold
+      f.pitchNorm = 0.4 + 0.15 * Math.sin(t * 0.17);
+      f.voiced = 0;
+      f.harmonic = 0.38 + 0.18 * swell;
+      f.percussive = 0.35 * pulse;
+      f.quiet = 0; f.burst = 0;
+      f.phaseLevel += dt * (0.22 + 0.25 * swell);
+      f.phaseBass += dt * (0.2 + 0.3 * (f.bass - 0.26));
+      f.phaseTreble += dt * 0.25;
+      for (let c = 0; c < 12; c++) {
+        f.chroma[c] = 0.25 + 0.75 * Math.max(0, Math.cos(t * 0.11 + c * 2.62));
+      }
+      // dim synthetic spectrum + waveform so per-frequency scenes have form
+      const fd = engine.freqData, td = engine.timeData;
+      for (let i = 0; i < fd.length; i++) {
+        const x = i / fd.length;
+        let v = 120 * Math.exp(-x * 16) * (0.6 + 0.4 * swell);
+        for (let k = 1; k < 5; k++) {
+          const fc = 0.018 * k * k + 0.008 * Math.sin(t * 0.4 + k * 1.9);
+          v += 90 * Math.exp(-Math.pow((x - fc) * 240, 2.0)) * (0.4 + 0.6 * Math.max(0, Math.sin(t * 0.9 + k * 1.7)));
+        }
+        fd[i] = Math.max(0, Math.min(255, v));
+      }
+      for (let i = 0; i < td.length; i++) {
+        const ph = i / td.length * 6.28318 * 12;
+        td[i] = 0.22 * Math.sin(ph + t * 5) + 0.1 * Math.sin(ph * 2.3 + t * 3.1);
+      }
+      // wander through the photogenic scenes while idling
+      idleCycle += dt;
+      if (idleCycle > IDLE_CYCLE_SECONDS && idleScenes.length > 1) {
+        idleCycle = 0;
+        setScene(idleScenes[idleNext % idleScenes.length]);
+        idleNext++;
+      }
+    }
 
     // ---- render loop ----
     let modeHold = 0;
@@ -288,6 +315,8 @@
 
       features.update(dt);
       classifier.update(dt);
+      const idle = engine.mode === 'none';
+      if (idle) idleDrive(dt);
       audioTex.update();
 
       // HUD info
@@ -308,19 +337,21 @@
       }
 
       // mode-aware scene preference: on sustained mode change, jump to a fitting scene
-      modeHold = (classifier.mode === (M._lastMode || 'music')) ? modeHold + dt : 0;
-      if (classifier.mode !== M._lastMode && modeHold === 0) M._pendingMode = classifier.mode;
-      if (M._pendingMode && M._pendingMode === classifier.mode) {
-        M._modePendingT = (M._modePendingT || 0) + dt;
-        if (M._modePendingT > 2.5) {
-          M._lastMode = classifier.mode;
-          M._pendingMode = null; M._modePendingT = 0;
-          if (autoCycle) setScene(pickSceneForMode(classifier.mode));
-        }
-      } else { M._modePendingT = 0; }
+      if (!idle) {
+        modeHold = (classifier.mode === (M._lastMode || 'music')) ? modeHold + dt : 0;
+        if (classifier.mode !== M._lastMode && modeHold === 0) M._pendingMode = classifier.mode;
+        if (M._pendingMode && M._pendingMode === classifier.mode) {
+          M._modePendingT = (M._modePendingT || 0) + dt;
+          if (M._modePendingT > 2.5) {
+            M._lastMode = classifier.mode;
+            M._pendingMode = null; M._modePendingT = 0;
+            if (autoCycle) setScene(pickSceneForMode(classifier.mode));
+          }
+        } else { M._modePendingT = 0; }
+      }
 
-      const audio = { f: features, c: classifier, engine, tex: audioTex, mode: classifier.mode };
-      if (!active && M.scenes.length) setScene(0);
+      const audio = { f: features, c: classifier, engine, tex: audioTex, mode: idle ? 'music' : classifier.mode };
+      if (!active && M.scenes.length) setScene(idle && idleScenes.length ? idleScenes[0] : 0);
       if (active) {
         if (active.update) active.update(dt, audio, now);
         active.render(null, audio, now);

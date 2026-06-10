@@ -11,23 +11,12 @@
 
   <div id="overlay">
     <h1>ORPHIC</h1>
-    <p class="tag">generative patterns · reactive to music &amp; voice</p>
-    <div class="choices">
-      <button class="choice" id="btn-file">
-        play a file
-        <span class="sub">mp3 · wav · ogg · m4a — or drag &amp; drop</span>
-      </button>
-      <button class="choice" id="btn-mic">
-        use microphone
-        <span class="sub">live music or your voice</span>
-      </button>
-      <button class="choice" id="btn-system">
-        capture spotify&nbsp;/&nbsp;tab audio
-        <span class="sub">chrome &amp; edge — share a tab and tick "share tab audio"</span>
-      </button>
-    </div>
-    <p class="hint">headphones recommended · double-click for fullscreen</p>
-    <input type="file" id="file-input" accept="audio/*,.mp3,.m4a,.wav,.ogg,.flac" hidden>
+    <p class="tag">generative patterns · alive to whatever's playing</p>
+    <button class="cta" id="btn-system">
+      <span class="cta-label">capture system audio</span>
+      <span class="sub">chrome &amp; edge — share a tab and tick "share tab audio"</span>
+    </button>
+    <p class="hint">sixteen patterns · cycles on the beat · double-click for fullscreen</p>
   </div>
 
   <div id="hud" class="asleep">
@@ -44,7 +33,6 @@
   <div id="help-bar" class="asleep">
     <span><kbd>←</kbd><kbd>→</kbd> switch pattern</span>
     <span><kbd>1–9</kbd><kbd>0</kbd> jump to pattern</span>
-    <span><kbd>space</kbd> pause</span>
     <span><kbd>a</kbd> auto-cycle</span>
     <span><kbd>f</kbd> fullscreen</span>
     <span><kbd>h</kbd> hide hud</span>

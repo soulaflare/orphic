@@ -132,7 +132,9 @@ function runSmokeTest(win: BrowserWindow): void {
   })
 }
 
-if (!app.requestSingleInstanceLock()) {
+// Smoke runs are disposable test processes — they must not contend with (or
+// silently defer to) a running dev/production instance.
+if (!isSmokeTest && !app.requestSingleInstanceLock()) {
   app.quit()
 } else {
   app.on('second-instance', () => {
