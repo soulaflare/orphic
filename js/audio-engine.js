@@ -15,12 +15,13 @@
       this.sourceNode = null;       // current MediaElementSource or MediaStreamSource
       this.mediaEl = null;          // <audio> element for file playback
       this.micStream = null;
-      this.mode = 'none';           // 'none' | 'file' | 'mic'
+      this.mode = 'none';           // 'none' | 'file' | 'mic' | 'system'
 
       this.freqData = new Uint8Array(FFT_SIZE / 2);
       this.timeData = new Float32Array(FFT_SIZE);
       this.binHz = 0;
-      this.onSourceChange = null;   // callback(mode)
+      this.onSourceChange = null;   // callback(mode, label)
+      this.onSourceEnd = null;      // callback() — system capture stopped externally
     }
 
     _ensureContext() {
@@ -97,6 +98,46 @@
       if (this.onSourceChange) this.onSourceChange(this.mode, 'microphone');
     }
 
+    /** Capture tab audio via screen-share (Chrome/Edge only — Firefox and
+     *  Safari return no audio tracks from getDisplayMedia). */
+    async useSystemAudio() {
+      this._ensureContext();
+
+      // ask BEFORE tearing down the current source, so a cancelled picker
+      // leaves the current playback untouched
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: true, // a video track is mandatory; stopped below
+        audio: {
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+          suppressLocalAudioPlayback: false, // keep hearing the source
+        },
+      });
+      if (!stream.getAudioTracks().length) {
+        stream.getTracks().forEach(t => t.stop());
+        throw new Error('no audio was shared — use Chrome or Edge, share a tab, and tick "Share tab audio" in the picker');
+      }
+
+      this._disconnectSource();
+      // the source keeps playing through the OS; don't double it
+      if (this._analyserToSpeakers) {
+        try { this.analyser.disconnect(); } catch (e) {}
+        this._analyserToSpeakers = false;
+      }
+      // video frames are wasted work — audio keeps flowing without them
+      stream.getVideoTracks().forEach(t => t.stop());
+
+      this.micStream = stream; // reuse the mic teardown path
+      this.sourceNode = this.ctx.createMediaStreamSource(stream);
+      this.sourceNode.connect(this.analyser);
+      this.mode = 'system';
+      stream.getAudioTracks()[0].addEventListener('ended', () => {
+        if (this.mode === 'system' && this.onSourceEnd) this.onSourceEnd();
+      });
+      if (this.onSourceChange) this.onSourceChange(this.mode, 'tab audio');
+    }
+
     togglePlayback() {
       if (this.mode !== 'file' || !this.mediaEl) return;
       if (this.mediaEl.paused) this.mediaEl.play();
@@ -104,7 +145,7 @@
     }
 
     get isPlaying() {
-      if (this.mode === 'mic') return true;
+      if (this.mode === 'mic' || this.mode === 'system') return true;
       if (this.mode === 'file' && this.mediaEl) return !this.mediaEl.paused;
       return false;
     }

@@ -24,6 +24,7 @@
       bpmBadge: document.getElementById('bpm-badge'),
       fileBtn: document.getElementById('btn-file'),
       micBtn: document.getElementById('btn-mic'),
+      systemBtn: document.getElementById('btn-system'),
       fileInput: document.getElementById('file-input'),
       autoBtn: document.getElementById('btn-auto'),
       helpBar: document.getElementById('help-bar'),
@@ -150,6 +151,7 @@
       if (e.target.files[0]) startFile(e.target.files[0]);
     });
     ui.micBtn.addEventListener('click', startMic);
+    ui.systemBtn.addEventListener('click', startSystem);
     ui.autoBtn.addEventListener('click', () => {
       autoCycle = !autoCycle;
       ui.autoBtn.classList.toggle('on', autoCycle);
@@ -174,6 +176,21 @@
         alert('Microphone unavailable: ' + err.message);
       }
     }
+    async function startSystem() {
+      try {
+        await engine.useSystemAudio();
+        ui.overlay.classList.add('hidden');
+        ui.sourceName.textContent = 'tab audio';
+      } catch (err) {
+        if (err.name === 'NotAllowedError') return; // user cancelled the picker
+        alert('Tab audio unavailable: ' + err.message);
+      }
+    }
+    engine.onSourceEnd = () => {
+      // "Stop sharing" pressed in the browser UI — back to the source picker
+      ui.sourceName.textContent = '';
+      ui.overlay.classList.remove('hidden');
+    };
 
     // drag & drop anywhere
     window.addEventListener('dragover', e => { e.preventDefault(); document.body.classList.add('dragging'); });
