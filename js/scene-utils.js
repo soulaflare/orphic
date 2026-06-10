@@ -24,6 +24,90 @@
     return prog;
   };
 
+  /** Bind the per-frequency textures + chroma (pairs with GLSL_SPECTRUM).
+   *  Uses texture units unit0..unit0+2; call after prog.use(). */
+  M.spectrumUniforms = function (prog, audio, unit0) {
+    const tex = audio.tex;
+    if (!tex) return prog;
+    prog.tex('uSpectrum', tex.spectrum, unit0)
+        .tex('uWaveform', tex.waveform, unit0 + 1)
+        .tex('uSpectrogram', tex.spectrogram, unit0 + 2)
+        .f('uBinLo', tex.binLo).f('uBinHi', tex.binHi)
+        .fv('uChroma', audio.f.chroma);
+    return prog;
+  };
+
+  /** GLSL: per-frequency audio access (pairs with spectrumUniforms()).
+   *  spec(x)    linear-frequency magnitude, x 0..1 over 30 Hz..16 kHz
+   *  specLog(x) log-frequency magnitude — equal screen space per octave
+   *  wave(x)    time-domain waveform sample, -1..1
+   *  uSpectrogram r: log-freq history (newest row at y=1), g: linear, b: peak-decay
+   */
+  M.GLSL_SPECTRUM = `
+  uniform sampler2D uSpectrum, uWaveform, uSpectrogram;
+  uniform float uBinLo, uBinHi;
+  uniform float uChroma[12];
+  float spec(float x) {
+    return texture(uSpectrum, vec2(mix(uBinLo, uBinHi, clamp(x, 0.0, 1.0)), 0.5)).r;
+  }
+  float specLog(float x) {
+    float f = exp(mix(log(uBinLo), log(uBinHi), clamp(x, 0.0, 1.0)));
+    return texture(uSpectrum, vec2(f, 0.5)).r;
+  }
+  float wave(float x) {
+    return texture(uWaveform, vec2(clamp(x, 0.0, 1.0), 0.5)).r * 2.0 - 1.0;
+  }
+  `;
+
+  /** Circular-mean hue of the chroma profile on the circle of fifths
+   *  (consonant chords land near one hue). Returns prev smoothed toward the
+   *  current key along the shortest arc; feed back each frame. */
+  M.chromaHue = function (chroma, prev, dt) {
+    let sx = 0, sy = 0;
+    for (let p = 0; p < 12; p++) {
+      const a = ((p * 7) % 12) / 12 * 2 * Math.PI;
+      sx += chroma[p] * Math.cos(a); sy += chroma[p] * Math.sin(a);
+    }
+    let target = Math.atan2(sy, sx) / (2 * Math.PI);
+    if (target < 0) target += 1;
+    let d = target - prev;
+    if (d > 0.5) d -= 1; else if (d < -0.5) d += 1;
+    return (prev + d * (1 - Math.exp(-dt / 1.5)) + 1) % 1;
+  };
+
+  /** Adaptive internal resolution for raymarched scenes. Call update(dt)
+   *  every frame; when it returns true, `scale` changed and the scene should
+   *  recreate its render target. Drops fast when the frame rate sags, climbs
+   *  back only after sustained headroom — weak GPUs degrade resolution
+   *  instead of stuttering. */
+  M.adaptiveRes = function (max, min) {
+    return {
+      scale: max,
+      _t: 0, _n: 0, _good: 0,
+      update(dt) {
+        this._t += dt; this._n++;
+        if (this._t < 1.0) return false;
+        const fps = this._n / this._t;
+        this._t = 0; this._n = 0;
+        if (fps < 50 && this.scale > min) {
+          this._good = 0;
+          this.scale = Math.max(min, this.scale - 0.12);
+          return true;
+        }
+        if (fps > 58 && this.scale < max) {
+          if (++this._good >= 3) { // 3 s of headroom before climbing
+            this._good = 0;
+            this.scale = Math.min(max, this.scale + 0.06);
+            return true;
+          }
+        } else {
+          this._good = 0;
+        }
+        return false;
+      },
+    };
+  };
+
   /** GLSL: uniform declarations matching audioUniforms(). */
   M.GLSL_AUDIO = `
   uniform float uTime, uBass, uBassFast, uMid, uTreble, uLevel;

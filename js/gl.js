@@ -109,6 +109,11 @@
     }
     use() { this.glc.gl.useProgram(this.handle); this._pendingTex.length = 0; return this; }
     f(name, x) { const l = this._loc(name); if (l) this.glc.gl.uniform1f(l, x); return this; }
+    fv(name, arr) {
+      const l = this._loc(name) || this._loc(name + '[0]');
+      if (l) this.glc.gl.uniform1fv(l, arr);
+      return this;
+    }
     i(name, x) { const l = this._loc(name); if (l) this.glc.gl.uniform1i(l, x); return this; }
     v2(name, x, y) { const l = this._loc(name); if (l) this.glc.gl.uniform2f(l, x, y); return this; }
     v3(name, x, y, z) { const l = this._loc(name); if (l) this.glc.gl.uniform3f(l, x, y, z); return this; }

@@ -1,6 +1,6 @@
 # ORPHIC — audio-reactive generative visualizer
 
-Nine GPU pattern simulations that react live to **music (MP3/WAV/OGG/M4A)**, your
+Thirteen GPU pattern simulations that react live to **music (MP3/WAV/OGG/M4A)**, your
 **microphone**, or **another tab's audio** (Spotify, YouTube, …), with automatic
 speech-vs-music detection that re-tunes the visuals for voice.
 
@@ -36,13 +36,13 @@ takes over playback (its volume control now controls the music).
 | key | action |
 |---|---|
 | `←` `→` | previous / next pattern |
-| `1`–`9` | jump straight to a pattern (disables auto-cycle) |
+| `1`–`9` `0` | jump straight to a pattern (disables auto-cycle) |
 | `space` | pause / resume playback |
 | `a` | toggle auto-cycle (switches pattern every ~45 s, on a beat) |
 | `f` / double-click | fullscreen |
 | `h` | hide the HUD entirely |
 
-## The nine patterns
+## The thirteen patterns
 
 | # | scene | system | reacts how |
 |---|---|---|---|
@@ -54,7 +54,11 @@ takes over playback (its volume control now controls the music).
 | 6 | **chladni resonance · cymatics** | Chladni plate eigenmodes, three superimposed pairs | mode pairs weighted by bass/mid/treble; beats re-strike the plate |
 | 7 | **chaos cathedral · de jong attractor** | Peter de Jong map, 262k iterated particles | beat-synced morphing between known-good parameter sets, bass breathes the camera |
 | 8 | **hyperdrive · neon tunnel** | demoscene polar tunnel, synthwave dress | speed rides the loudness phase accumulator, beats launch rings, kick → chromatic aberration |
-| 9 | **voice aurora · pitch contour** | live pitch tracking drawn as flowing arcs | speech-only scene: ribbon rides your pitch, sibilance shadows above, consonants spark |
+| 9 | **obsidian sanctum · mandelbox** | raymarched Mandelbox (Lowe 2010), orbit traps | bass refolds the fractal's topology, mids twist the box fold, the live spectrum lights it by altitude (bass = base, treble = spires), palette follows the musical key |
+| 10 | **spectral canyon · spectrogram terrain** | raymarched heightfield over the scrolling spectrogram | the landscape IS the spectrum: lateral = log frequency, depth = time — every sound erupts at the horizon and rides toward you; horizon carries a live EQ aurora |
+| 11 | **harmony bloom · chroma mandala** | 12-petal flower + roto-zoom feedback echo | each petal is a pitch class sized by its energy (chords are visible shapes), petal hues sit on the circle of fifths, interior rings are a bass→treble frequency ladder, beats step the rotation |
+| 12 | **aurora silk · liquid light** | IQ nested domain warping (f(p+g(p+h(p)))) | each band owns a warp layer — bass folds the sheets, mids the turbulence, treble the crackle; every filament is lit by its own spectrum slice |
+| 13 | **voice aurora · pitch contour** | live pitch tracking drawn as flowing arcs | speech-only scene: ribbon rides your pitch, sibilance shadows above, consonants spark |
 
 ## How it listens
 
@@ -65,6 +69,14 @@ takes over playback (its volume control now controls the music).
 - tempo via autocorrelation of the onset-strength signal; beat phase re-anchors
   on strong onsets and coasts through silent gaps
 - pitch via NSDF-style autocorrelation (80–1000 Hz)
+- chroma: per-bin energy folded into 12 pitch classes (55 Hz–5 kHz); scenes
+  derive a "key hue" from its circular mean on the circle of fifths, so
+  consonant harmony lands on related colors
+- per-frequency GPU access: the raw FFT and waveform are uploaded as 1D
+  textures every frame, plus a scrolling 512×256 spectrogram history target
+  (log-frequency rows + peak-decay envelope) — scenes sample these via the
+  shared `spec()` / `specLog()` / `wave()` GLSL helpers, so individual
+  frequencies (not just band scalars) can drive structure
 - **phase accumulators** — loudness counters that advance faster when the music
   is louder — drive all slow scene motion (no per-frame amplitude jitter)
 - speech vs music: syllabic-rate (≈4 Hz) energy modulation, pause ratio,

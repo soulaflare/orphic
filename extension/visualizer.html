@@ -38,7 +38,7 @@
 
   <div id="help-bar" class="asleep">
     <span><kbd>←</kbd><kbd>→</kbd> switch pattern</span>
-    <span><kbd>1–9</kbd> jump to pattern</span>
+    <span><kbd>1–9</kbd><kbd>0</kbd> jump to pattern</span>
     <span><kbd>space</kbd> pause</span>
     <span><kbd>a</kbd> auto-cycle</span>
     <span><kbd>f</kbd> fullscreen</span>
@@ -52,6 +52,7 @@
   <script src="js/classifier.js"></script>
   <!-- pattern scenes (each self-registers; order = number-key order) -->
   <script src="js/scene-utils.js"></script>
+  <script src="js/audio-textures.js"></script><!-- needs scene-utils' GLSL chunks -->
   <script src="js/scene-physarum.js"></script>
   <script src="js/scene-fluid.js"></script>
   <script src="js/scene-reaction.js"></script>
@@ -60,6 +61,10 @@
   <script src="js/scene-cymatics.js"></script>
   <script src="js/scene-attractor.js"></script>
   <script src="js/scene-tunnel.js"></script>
+  <script src="js/scene-fractal.js"></script>
+  <script src="js/scene-terrain.js"></script>
+  <script src="js/scene-mandala.js"></script>
+  <script src="js/scene-aurora.js"></script>
   <script src="js/scene-voice.js"></script>
   <!-- extension: pick up the tabCapture stream ID before the app boots -->
   <script src="tab-source.js"></script>

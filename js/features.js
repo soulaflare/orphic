@@ -42,6 +42,11 @@
       this.pitchNorm = 0;      // log-scaled 80..1000Hz -> 0..1
       this.voiced = 0;         // smoothed voicing confidence
 
+      // chroma: energy folded into 12 pitch classes (C=0), each 0..1
+      this.chroma = new Float32Array(12);
+      this._chromaRaw = new Float32Array(12);
+      this._chromaBinPC = null; // per-FFT-bin pitch class, built lazily
+
       // phase accumulators (Listeningway-style): loudness counters that
       // advance faster when the band is louder — smooth BPM-independent
       // animation time, far better than per-frame amplitude jitter.
@@ -118,6 +123,9 @@
       for (i = 1; i < time.length; i++) if ((time[i - 1] < 0) !== (time[i] < 0)) zc++;
       this.zcr = envFollow(this.zcr, zc / time.length, 0.08, 0.08, dt);
 
+      // ---- chroma (12 pitch classes) ----
+      this._updateChroma(freq, binHz, dt);
+
       // ---- spectral flux + onsets ----
       if (!this._prevSpec) this._prevSpec = new Uint8Array(n);
       let flux = 0;
@@ -179,6 +187,35 @@
 
       // ---- pitch (autocorrelation, time domain) ----
       this._updatePitch(time, eng.ctx ? eng.ctx.sampleRate : 44100, dt);
+    }
+
+    _updateChroma(freq, binHz, dt) {
+      // map each FFT bin (55 Hz..5 kHz) to its pitch class once, then fold
+      // squared magnitudes into a 12-bin profile normalized to its max
+      if (!this._chromaBinPC || this._chromaBinHz !== binHz) {
+        this._chromaBinHz = binHz;
+        const pc = new Int8Array(freq.length).fill(-1);
+        const lo = Math.ceil(55 / binHz), hi = Math.min(freq.length, Math.floor(5000 / binHz));
+        for (let i = lo; i < hi; i++) {
+          const midi = 69 + 12 * Math.log2((i * binHz) / 440);
+          pc[i] = ((Math.round(midi) % 12) + 12) % 12;
+        }
+        this._chromaBinPC = pc;
+      }
+      const raw = this._chromaRaw;
+      raw.fill(0);
+      const pcMap = this._chromaBinPC;
+      for (let i = 0; i < freq.length; i++) {
+        const p = pcMap[i];
+        if (p < 0) continue;
+        const m = freq[i] / 255;
+        raw[p] += m * m;
+      }
+      let max = 1e-6;
+      for (let p = 0; p < 12; p++) if (raw[p] > max) max = raw[p];
+      for (let p = 0; p < 12; p++) {
+        this.chroma[p] = envFollow(this.chroma[p], raw[p] / max, 0.05, 0.4, dt);
+      }
     }
 
     _estimateTempo(dt) {

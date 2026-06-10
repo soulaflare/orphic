@@ -14,6 +14,7 @@
     const engine = new M.AudioEngine();
     const features = new M.FeatureExtractor(engine);
     const classifier = new M.SpeechMusicClassifier(features);
+    const audioTex = new M.AudioTextures(glc, engine);
 
     const ui = {
       overlay: document.getElementById('overlay'),
@@ -39,7 +40,7 @@
       ui.overlay.style.display = 'none'; // no fade — screenshots must see the canvas
       const scene = M.scenes[idx].create(glc);
       if (scene.resize) scene.resize(glc.width, glc.height);
-      const audio = { f: features, c: classifier, engine, mode: 'music' };
+      const audio = { f: features, c: classifier, engine, tex: audioTex, mode: 'music' };
       let st = 0, frames = 0;
       function fakeFrame() {
         // headless rAF only delivers ~40 ticks before the screenshot, so run
@@ -67,6 +68,23 @@
         f.voiced = 0.8 + 0.2 * Math.sin(st * 2.3);
         f.pitchHz = 200;
         f.phaseLevel += dt * 0.8; f.phaseBass += dt; f.phaseTreble += dt;
+        for (let c = 0; c < 12; c++) f.chroma[c] = 0.5 + 0.5 * Math.sin(st * 0.9 + c * 2.1);
+        // synthetic spectrum/waveform so per-frequency scenes have content
+        const fd = engine.freqData, td = engine.timeData;
+        for (let i = 0; i < fd.length; i++) {
+          const x = i / fd.length;
+          let v = 200 * Math.exp(-x * 14) * (0.7 + 0.3 * Math.sin(st * 4.0));
+          for (let k = 1; k < 6; k++) {
+            const fc = 0.02 * k * k + 0.01 * Math.sin(st * 0.8 + k);
+            v += 160 * Math.exp(-Math.pow((x - fc) * 220, 2.0)) * (0.5 + 0.5 * Math.sin(st * 3.0 + k * 1.7));
+          }
+          fd[i] = Math.max(0, Math.min(255, v));
+        }
+        for (let i = 0; i < td.length; i++) {
+          const ph = i / td.length * 6.28318 * 16;
+          td[i] = 0.4 * Math.sin(ph + st * 8) + 0.2 * Math.sin(ph * 2.7 + st * 5);
+        }
+        audioTex.update();
         if (scene.update) scene.update(dt, audio, st);
         scene.render(null, audio, st);
       }
@@ -78,7 +96,8 @@
     if (location.hash === '#test') {
       try {
         glc.resize(640, 360);
-        const audio = { f: features, c: classifier, engine, mode: 'music' };
+        audioTex.update();
+        const audio = { f: features, c: classifier, engine, tex: audioTex, mode: 'music' };
         for (const def of M.scenes) {
           try {
             const s = def.create(glc);
@@ -225,7 +244,7 @@
       else if (e.key === 'a') ui.autoBtn.click();
       else if (e.key === 'f') toggleFullscreen();
       else if (e.key === 'h') ui.hud.classList.toggle('hidden-hud');
-      else if (/^[1-9]$/.test(e.key)) { autoCycle = false; ui.autoBtn.classList.remove('on'); ui.autoBtn.textContent = 'auto-cycle: off'; setScene(parseInt(e.key, 10) - 1); }
+      else if (/^[0-9]$/.test(e.key)) { autoCycle = false; ui.autoBtn.classList.remove('on'); ui.autoBtn.textContent = 'auto-cycle: off'; setScene(e.key === '0' ? 9 : parseInt(e.key, 10) - 1); }
     });
     function toggleFullscreen() {
       if (document.fullscreenElement) document.exitFullscreen();
@@ -250,6 +269,7 @@
 
       features.update(dt);
       classifier.update(dt);
+      audioTex.update();
 
       // HUD info
       ui.modeBadge.textContent = classifier.mode;
@@ -280,7 +300,7 @@
         }
       } else { M._modePendingT = 0; }
 
-      const audio = { f: features, c: classifier, engine, mode: classifier.mode };
+      const audio = { f: features, c: classifier, engine, tex: audioTex, mode: classifier.mode };
       if (!active && M.scenes.length) setScene(0);
       if (active) {
         if (active.update) active.update(dt, audio, now);
