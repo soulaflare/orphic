@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MYTHOS — audio-reactive visualizer</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <canvas id="view"></canvas>
+
+  <div id="overlay">
+    <h1>MYTHOS</h1>
+    <p class="tag">generative patterns · reactive to music &amp; voice</p>
+    <div class="choices">
+      <button class="choice" id="btn-file">
+        play a file
+        <span class="sub">mp3 · wav · ogg · m4a — or drag &amp; drop</span>
+      </button>
+      <button class="choice" id="btn-mic">
+        use microphone
+        <span class="sub">live music or your voice</span>
+      </button>
+    </div>
+    <p class="hint">headphones recommended · double-click for fullscreen</p>
+    <input type="file" id="file-input" accept="audio/*,.mp3,.m4a,.wav,.ogg,.flac" hidden>
+  </div>
+
+  <div id="hud" class="asleep">
+    <span id="scene-name"></span>
+    <span id="source-name"></span>
+    <span class="spacer"></span>
+    <span class="badge" id="bpm-badge">·</span>
+    <span class="badge mode-music" id="mode-badge">music</span>
+    <button class="hud-btn on" id="btn-auto">auto-cycle: on</button>
+  </div>
+
+  <div id="help-bar" class="asleep">
+    <span><kbd>←</kbd><kbd>→</kbd> switch pattern</span>
+    <span><kbd>1–9</kbd> jump to pattern</span>
+    <span><kbd>space</kbd> pause</span>
+    <span><kbd>a</kbd> auto-cycle</span>
+    <span><kbd>f</kbd> fullscreen</span>
+    <span><kbd>h</kbd> hide hud</span>
+  </div>
+
+  <!-- core -->
+  <script src="js/gl.js"></script>
+  <script src="js/audio-engine.js"></script>
+  <script src="js/features.js"></script>
+  <script src="js/classifier.js"></script>
+  <!-- pattern scenes (each self-registers; order = number-key order) -->
+  <script src="js/scene-utils.js"></script>
+  <script src="js/scene-physarum.js"></script>
+  <script src="js/scene-fluid.js"></script>
+  <script src="js/scene-reaction.js"></script>
+  <script src="js/scene-flowfield.js"></script>
+  <script src="js/scene-lenia.js"></script>
+  <script src="js/scene-cymatics.js"></script>
+  <script src="js/scene-attractor.js"></script>
+  <script src="js/scene-tunnel.js"></script>
+  <script src="js/scene-voice.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
