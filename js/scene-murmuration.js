@@ -46,7 +46,9 @@
   in vec2 vVel;
   out vec4 fragColor;
   void main() {
-    float w = smoothstep(0.5, 0.0, length(gl_PointCoord - 0.5));
+    // scaled so a fully packed flock reads ~30, a spread one ~4 — the
+    // separation ramp depends on this calibration
+    float w = smoothstep(0.5, 0.0, length(gl_PointCoord - 0.5)) * 0.125;
     fragColor = vec4(vVel * w, w, 0.0);
   }`;
 
@@ -76,16 +78,17 @@
 
     // the mix sets the flock's mood: mids = discipline, kick = burst apart
     float wAlign = 1.8 + uMid * 4.0;
-    float wCoh = 0.85 * (1.0 - uBassFast * 0.5);
-    float wSep = 0.9 + uBassFast * 3.0;
+    float wCoh = 0.95 * (1.0 - uBassFast * 0.5);
+    float wSep = 0.9 + uBassFast * 3.0 + uBurst * 4.0;
 
     vec2 acc = (avgVel - vel) * wAlign
              + gC * wCoh
-             - gF * wSep * smoothstep(1.5, 8.0, dens);
+             - gF * wSep * smoothstep(6.0, 30.0, dens); // only when truly packed
 
-    // wandering roost keeps the flock on screen and slowly touring
+    // wandering roost keeps the flock on screen; in a rest it reels the
+    // birds into a tight, slowly coiling ball
     vec2 toR = uRoost - pos;
-    acc += toR * (0.16 + 0.6 * smoothstep(0.22, 0.5, length(toR)));
+    acc += toR * (0.16 + 0.6 * smoothstep(0.22, 0.5, length(toR)) + uQuiet * 0.5);
 
     // hawk strike: flee hard inside its radius
     if (uPredator.z > 0.5) {
@@ -97,13 +100,13 @@
     // each bird is keyed to one spectrum slice — its band agitates it
     float bandE = specLog(h.x);
     vec2 jit = hash22(gl_FragCoord.xy + fract(uTime) * 317.0) - 0.5;
-    acc += jit * bandE * (0.15 + uTreble * 0.9);
+    acc += jit * bandE * (0.15 + uTreble * 0.9) * (1.0 - uQuiet);
 
     vel += acc * uDt;
 
-    // starlings never hover: clamp speed into a flying band
+    // starlings never hover: clamp speed into a flying band (rests slow it)
     float spd = max(length(vel), 1e-5);
-    float vmax = 0.13 + uBass * 0.05 + uBeat * 0.03;
+    float vmax = (0.13 + uBass * 0.05 + uBeat * 0.03) * (1.0 - uQuiet * 0.45);
     vel *= clamp(spd, 0.055, vmax) / spd;
 
     pos += vel * vec2(1.0 / uAspect, 1.0) * uDt;
@@ -127,23 +130,39 @@
                 * 0.55;
     vec3 sky = mix(warm, deep, pow(y, 0.65));
 
-    // low sun, sunk to the horizon
-    vec2 sunP = vec2(0.5 + sin(uPhaseLevel * 0.05) * 0.22, 0.10);
-    vec2 d = (vUV - sunP) * vec2(uRes.x / uRes.y, 1.0);
+    // low setting sun: warm core, amber halo, beat pulse
+    vec2 sunP = vec2(0.5 + sin(uPhaseLevel * 0.05) * 0.22, 0.115);
+    vec2 d = (vUV - sunP) * vec2(uRes.x / uRes.y, 1.35);
     float dd = dot(d, d);
-    sky += vec3(1.0, 0.75, 0.55) * (exp(-dd * 180.0) * (0.9 + uBeat * 0.35)
-                                    + exp(-dd * 14.0) * 0.22);
+    vec3 sunCol = mix(vec3(1.0, 0.45, 0.22), vec3(1.0, 0.88, 0.62), exp(-dd * 500.0));
+    sky += sunCol * (exp(-dd * 300.0) * (1.0 + uBeat * 0.35)
+                     + exp(-dd * 22.0) * 0.30 + exp(-dd * 5.0) * 0.10);
 
-    // thin stratus bands near the horizon
-    float cl = fbm3(vec2(vUV.x * 3.0 + uPhaseLevel * 0.01, y * 14.0));
-    sky *= 1.0 - smoothstep(0.45, 0.8, cl) * 0.18 * (1.0 - y);
+    // thin stratus bands near the horizon, warmed near the sun
+    float cl = smoothstep(0.45, 0.8, fbm3(vec2(vUV.x * 3.0 + uPhaseLevel * 0.01, y * 14.0)));
+    sky *= 1.0 - cl * 0.18 * (1.0 - y);
+    sky += sunCol * cl * exp(-dd * 8.0) * 0.10;
 
-    // first stars up top
-    float st = step(0.9975, hash12(floor(vUV * uRes / 3.0)));
-    sky += vec3(st) * smoothstep(0.55, 0.95, y) * 0.25;
+    // twinkling stars, drifting almost imperceptibly with the music's time
+    vec2 sp = (vUV + vec2(uPhaseLevel * 0.0015, 0.0)) * uRes / 4.0;
+    float sh = hash12(floor(sp));
+    float tw = 0.55 + 0.45 * sin(uTime * (1.0 + sh * 4.0) + sh * 40.0);
+    float star = step(0.9965, sh)
+               * smoothstep(0.5, 0.1, length(fract(sp) - 0.5)) * tw;
+    sky += vec3(0.85, 0.9, 1.0) * star * smoothstep(0.45, 0.85, y)
+           * (0.45 + uTreble * 0.35);
+
+    // dark treeline anchoring the horizon, rim-lit toward the sun
+    float ridge = 0.105 + 0.04 * fbm3(vec2(vUV.x * 5.5, 0.7));
+    float ground = smoothstep(ridge + 0.006, ridge - 0.006, y);
+    vec3 groundCol = vec3(0.012, 0.014, 0.022)
+                   + sunCol * exp(-abs(vUV.x - sunP.x) * 4.0) * 0.05;
+    sky = mix(sky, groundCol, ground);
 
     float v = length(vUV - 0.5);
     sky *= 1.0 - v * v * 0.55;
+    // dither kills 8-bit gradient banding
+    sky += (hash12(vUV * uRes) - 0.5) / 128.0;
     fragColor = vec4(aces(sky), 1.0);
   }`;
 
@@ -167,10 +186,10 @@
     // wing-beat flicker
     float wing = 0.78 + 0.32 * sin(uTime * (7.0 + h.y * 6.0) + h.y * 40.0);
     gl_Position = vec4(a.xy * 2.0 - 1.0, 0.0, 1.0);
-    gl_PointSize = mix(1.2, 2.8, depth) * wing * uPointScale;
-    vAlpha = mix(0.45, 0.95, depth);
+    gl_PointSize = mix(1.8, 3.8, depth) * wing * uPointScale;
+    vAlpha = mix(0.65, 1.0, depth);
     // silhouettes, faintly lifted by atmospheric haze when "far"
-    vColor = mix(vec3(0.16, 0.13, 0.20), vec3(0.015, 0.015, 0.035), depth);
+    vColor = mix(vec3(0.20, 0.17, 0.26), vec3(0.010, 0.012, 0.028), depth);
   }`;
   const DRAW_FRAG = `#version 300 es
   precision highp float;
@@ -178,7 +197,7 @@
   in vec3 vColor;
   out vec4 fragColor;
   void main() {
-    float a = smoothstep(0.5, 0.18, length(gl_PointCoord - 0.5)) * vAlpha;
+    float a = smoothstep(0.5, 0.22, length(gl_PointCoord - 0.5)) * vAlpha;
     fragColor = vec4(vColor, a);
   }`;
 
@@ -207,9 +226,10 @@
           const f = audio.f;
           keyHue = M.chromaHue(f.chroma, keyHue, dt);
 
-          // hawk: onsets launch a strike across the flock
+          // hawk: occasional strikes, not every onset — scatters must stay
+          // the exception or the flock never re-forms
           pred.t -= dt;
-          if (f.onset === 1 && pred.t < -1.2) {
+          if (f.onset === 1 && pred.t < -3.5) {
             const ang = Math.random() * Math.PI * 2;
             pred.x = 0.5 + Math.cos(ang) * 0.55;
             pred.y = 0.55 + Math.sin(ang) * 0.45;

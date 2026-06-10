@@ -1,10 +1,11 @@
-/* ORPHIC scene — AURORA SILK · domain-warped liquid light
- * IQ-style nested domain warping (f(p + g(p + h(p)))) rendered as iridescent
- * silk. Each frequency band owns a structural layer of the warp: bass folds
- * the large sheets, mids drive the second warp's turbulence, treble adds fine
- * crackle — and each silk filament is lit by its own slice of the live
- * spectrum, so a melody runs glints along different threads than the kick.
- * Palette follows the musical key on the circle of fifths.
+/* ORPHIC scene — AURORA VEIL · spectral curtains
+ * A night-sky aurora whose curtains ARE the equalizer: horizontal position
+ * is log frequency (bass curtains on the left, treble shimmer on the right)
+ * and each curtain's brightness and height follow its band's peak-decay
+ * envelope — temporally smooth, so the veil breathes instead of strobing.
+ * Domain-warped folds give the silk; kicks send a ripple along the curtain,
+ * sustained harmonic content raises the whole veil, and in a rest it fades
+ * to one faint arc over the horizon — the music's return floods the sky.
  */
 (function () {
   'use strict';
@@ -14,48 +15,66 @@
   uniform vec2 uRes;
   uniform float uKeyHue;
 
+  // one aurora layer: az/height profile lit by the smoothed spectrum
+  float curtain(float az, float y, float base, float sharp, vec2 warp) {
+    float a = clamp(az + (warp.x - 0.5) * (0.16 + uBass * 0.10), 0.0, 1.0);
+    // peak-decay channel of the newest spectrogram row: calm, no strobe
+    float eq = texture(uSpectrogram, vec2(a, 0.985)).b;
+    // kick ripple traveling along the veil
+    eq *= 1.0 + uBassFast * 0.30 * sin(a * 24.0 - uTime * 5.0);
+    float b = base + (warp.y - 0.5) * 0.14 + 0.05 * sin(a * 6.28318 + uPhaseLevel * 0.23);
+    float h = y - b;
+    float lift = 0.35 + eq * 0.9 + uHarmonic * 0.5; // loud bands rise higher
+    return exp(-max(h, 0.0) * sharp / lift) * smoothstep(-0.05, 0.015, h) * eq;
+  }
+
   void main() {
-    vec2 p = (vUV - 0.5) * vec2(uRes.x / uRes.y, 1.0) * 1.7;
+    vec2 p = vUV;
+    float t1 = uPhaseLevel * 0.06;
 
-    // layer 1 — slow sheets, folded harder when the bass leans in
-    float t1 = uPhaseLevel * 0.10;
-    vec2 q = vec2(fbm(p * 1.1 + vec2(0.0, t1)),
-                  fbm(p * 1.1 + vec2(5.2, t1 * 1.31)));
+    // night sky: near-black with a whisper of color, stars above
+    vec3 col = mix(vec3(0.012, 0.014, 0.030), vec3(0.002, 0.002, 0.008),
+                   pow(p.y, 0.7));
+    vec2 sgrid = p * uRes / 4.0;
+    float star = step(0.997, hash12(floor(sgrid)))
+               * smoothstep(0.5, 0.1, length(fract(sgrid) - 0.5));
+    col += vec3(star) * smoothstep(0.35, 0.8, p.y) * (0.35 + uTreble * 0.3);
 
-    // layer 2 — mid-band turbulence
-    float warp1 = 1.1 + uBass * 2.2 + uOnset * 0.5;
-    vec2 r = vec2(fbm(p * 2.1 + q * warp1 + vec2(1.7, 9.2 + uPhaseBass * 0.08)),
-                  fbm(p * 2.1 + q * warp1 + vec2(8.3, 2.8 + uPhaseBass * 0.06)));
+    // silky folds, drifting on the loudness phase
+    vec2 w1 = vec2(fbm(vec2(p.x * 2.1, p.y * 1.2) + t1),
+                   fbm(vec2(p.x * 2.3 + 5.2, p.y * 1.3) - t1 * 0.8));
+    vec2 w2 = vec2(fbm(vec2(p.x * 1.6 + 9.1, p.y * 1.1) - t1 * 0.6),
+                   fbm(vec2(p.x * 1.8 + 2.7, p.y * 0.9) + t1 * 1.2));
 
-    // layer 3 — the silk itself
-    float warp2 = 1.4 + uMid * 2.0;
-    float v = fbm(p * 2.6 + r * warp2 + vec2(uPhaseTreble * 0.05));
+    // two curtain layers for depth; ray streaks comb them vertically
+    float c1 = curtain(p.x, p.y, 0.22, 5.0, w1);
+    float c2 = curtain(p.x * 0.92 + 0.05, p.y, 0.40, 7.0, w2) * 0.55;
+    float rays = 0.55 + 0.45 * fbm(vec2(p.x * 16.0 + w1.x * 2.0, p.y * 1.6 - t1 * 2.5));
 
-    // treble crackle: fine grain that only exists when highs are present
-    v += (vnoise(p * 16.0 + uPhaseTreble * 1.4) - 0.5) * uTreble * 0.14;
+    // aurora colors: green base rising into violet tips, nudged by the key
+    float hueBase = 0.30 + 0.12 * sin(uKeyHue * 6.28318);
+    float tip1 = clamp((p.y - 0.22) * 2.0, 0.0, 1.0);
+    float tip2 = clamp((p.y - 0.40) * 2.0, 0.0, 1.0);
+    vec3 a1 = mix(hsv(hueBase, 0.9, 1.0), hsv(hueBase + 0.42, 0.65, 1.0), tip1);
+    vec3 a2 = mix(hsv(hueBase + 0.06, 0.85, 1.0), hsv(hueBase + 0.50, 0.6, 1.0), tip2);
 
-    // every filament v is lit by its own frequency slice (3-tap soften)
-    float bx = clamp(v * 1.45 - 0.2, 0.0, 1.0);
-    float band = specLog(bx) * 0.5 + specLog(min(bx + 0.045, 1.0)) * 0.25
-               + specLog(max(bx - 0.045, 0.0)) * 0.25;
+    // rests: the veil dies down to a faint arc; the return floods the sky
+    float life = (1.0 - uQuiet * 0.8) * (0.55 + uLevel * 0.65) + uBurst * 1.2;
+    col += a1 * c1 * rays * life;
+    col += a2 * c2 * rays * life * 0.8;
 
-    float hue = uKeyHue + v * 0.34 + q.x * 0.14 + r.y * 0.10;
-    vec3 col = pal(hue, vec3(0.5), vec3(0.5), vec3(1.0), vec3(0.0, 0.33, 0.67));
-    // deep blacks between the lit filaments — contrast carries the silk look
-    col *= 0.03 + pow(band, 3.0) * 2.3 + uLevel * 0.08;
+    // faint snowfield horizon catching the glow
+    float ground = smoothstep(0.085, 0.075, p.y);
+    vec3 glow = a1 * (c1 + 0.15) * 0.22 * life;
+    col = mix(col, vec3(0.010, 0.012, 0.022) + glow, ground);
 
-    // sheen along the steepest folds
-    float sheen = pow(clamp(1.0 - abs(v - 0.5) * 3.2, 0.0, 1.0), 5.0);
-    col += pal(hue + 0.4, vec3(0.5), vec3(0.5), vec3(1.0), vec3(0.0, 0.33, 0.67))
-           * sheen * (0.08 + uFlux * 1.6 + uBeat * 0.25);
-
-    float d = length(vUV - 0.5);
-    col *= 1.0 - d * d * 0.75;
+    float v = length(vUV - 0.5);
+    col *= 1.0 - v * v * 0.5;
     fragColor = vec4(aces(col), 1.0);
   }`;
 
   M.registerScene({
-    name: 'aurora silk · liquid light',
+    name: 'aurora veil · spectral curtains',
     modes: ['music', 'speech', 'ambient'],
     create(glc) {
       const prog = glc.program(FRAG);
