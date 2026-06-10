@@ -446,7 +446,9 @@
     }
 
     // ---- render loop ----
-    let modeHold = 0;
+    // mode watcher: lastMode starts at the classifier's default so the first
+    // classification after capture doesn't count as a change
+    let lastMode = 'music', pendingMode = null, pendingModeT = 0;
     function frame() {
       requestAnimationFrame(frame);
       const now = performance.now() / 1000;
@@ -509,18 +511,21 @@
         }
       }
 
-      // mode-aware scene preference: on sustained mode change, jump to a fitting scene
+      // mode-aware scene preference: when the input's character changes for
+      // good (music ↔ speech ↔ ambient), move off a scene that doesn't suit
+      // it — but a scene that fits both modes just stays put
       if (!idle) {
-        modeHold = (classifier.mode === (M._lastMode || 'music')) ? modeHold + dt : 0;
-        if (classifier.mode !== M._lastMode && modeHold === 0) M._pendingMode = classifier.mode;
-        if (M._pendingMode && M._pendingMode === classifier.mode) {
-          M._modePendingT = (M._modePendingT || 0) + dt;
-          if (M._modePendingT > 2.5) {
-            M._lastMode = classifier.mode;
-            M._pendingMode = null; M._modePendingT = 0;
-            if (autoCycle) setScene(pickSceneForMode(classifier.mode));
+        if (classifier.mode !== lastMode) {
+          if (classifier.mode !== pendingMode) { pendingMode = classifier.mode; pendingModeT = 0; }
+          pendingModeT += dt;
+          if (pendingModeT > 2.5) {
+            lastMode = pendingMode;
+            pendingMode = null; pendingModeT = 0;
+            if (autoCycle && !sceneFits(activeIdx, lastMode)) {
+              setScene(pickSceneForMode(lastMode));
+            }
           }
-        } else { M._modePendingT = 0; }
+        } else { pendingMode = null; pendingModeT = 0; }
       }
 
       const audio = { f: features, c: classifier, engine, tex: audioTex, mode: idle ? 'music' : classifier.mode };

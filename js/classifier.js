@@ -23,6 +23,7 @@
       this._idx = 0;
       this._filled = 0;
       this._timer = 0;
+      this._quietT = 0;
     }
 
     update(dt) {
@@ -31,6 +32,9 @@
       this._voiced[this._idx] = f.voiced;
       this._idx = (this._idx + 1) % WIN;
       this._filled = Math.min(WIN, this._filled + 1);
+
+      // accumulate every frame, not just on the 0.25s analysis tick
+      this._quietT = f.level > 0.04 ? 0 : this._quietT + dt;
 
       this._timer += dt;
       if (this._timer < 0.25 || this._filled < WIN * 0.8) return;
@@ -77,11 +81,14 @@
       const target = 1 / (1 + Math.exp(-score * 1.6)); // squash
       this.speechProb += (target - this.speechProb) * 0.25; // slow blend, ~2s to flip
 
-      const active = f.level > 0.04;
-      if (!active) this.mode = 'ambient';
-      else this.mode = this.speechProb > 0.62 ? 'speech'
-                     : this.speechProb < 0.45 ? 'music'
-                     : this.mode; // hysteresis band holds previous
+      // 'ambient' needs sustained quiet — a breakdown, a fade, or the gap
+      // between tracks must not flip the mode (and bounce the scene)
+      if (this._quietT > 4.0) this.mode = 'ambient';
+      else if (f.level > 0.04) {
+        this.mode = this.speechProb > 0.62 ? 'speech'
+                  : this.speechProb < 0.45 ? 'music'
+                  : this.mode; // hysteresis band holds previous
+      } // briefly quiet: hold the previous mode
     }
 
     _goertzel(buf, hz, fps) {
