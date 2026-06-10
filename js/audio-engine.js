@@ -26,7 +26,7 @@
 
     _ensureContext() {
       if (!this.ctx) {
-        this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+        this.ctx = new AudioContext();
         this.analyser = this.ctx.createAnalyser();
         this.analyser.fftSize = FFT_SIZE;
         this.analyser.smoothingTimeConstant = 0; // we do our own smoothing
@@ -113,6 +113,9 @@
           autoGainControl: false,
           suppressLocalAudioPlayback: false, // keep hearing the source
         },
+        selfBrowserSurface: 'exclude',  // capturing ourselves is never useful
+        surfaceSwitching: 'include',    // let the user retarget the share live
+        systemAudio: 'include',         // offer whole-system audio on Windows
       });
       if (!stream.getAudioTracks().length) {
         stream.getTracks().forEach(t => t.stop());
@@ -143,6 +146,9 @@
      *  playback, so we must route the audio to the speakers ourselves. */
     async useTabStream(streamId) {
       this._ensureContext();
+      // the mandatory/chromeMediaSource shape is Chrome's only documented
+      // bridge for tabCapture stream IDs; it cannot carry modern constraint
+      // keys, so voice processing is switched off via applyConstraints below
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           mandatory: {
@@ -150,6 +156,11 @@
             chromeMediaSourceId: streamId,
           },
         },
+      });
+      await stream.getAudioTracks()[0].applyConstraints({
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false,
       });
 
       this._disconnectSource();
