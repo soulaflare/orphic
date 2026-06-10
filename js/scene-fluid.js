@@ -31,9 +31,13 @@
     vec3 c = texture(uTarget, vUV).xyz + uColor * exp(-dot(p, p) / uRadius);
     // dye only (uCap=1): limit the max channel while preserving the ratios,
     // so stacked splats saturate toward their hue instead of clipping to
-    // white paste. Velocity splats (uCap=0) must stay unclamped.
-    float m = max(c.r, max(c.g, c.b));
-    if (uCap > 0.5 && m > 1.0) c /= m;
+    // white paste, and floor at 0 so negative splats carve black ink.
+    // Velocity splats (uCap=0) must stay unclamped in both directions.
+    if (uCap > 0.5) {
+      float m = max(c.r, max(c.g, c.b));
+      if (m > 1.0) c /= m;
+      c = max(c, vec3(0.0));
+    }
     fragColor = vec4(c, 1.0);
   }`;
 
@@ -204,6 +208,20 @@
               const ox = 0.5 + Math.cos(a) * ring, oy = 0.5 + Math.sin(a) * ring;
               doSplat(ox, oy, Math.cos(a) * 380 * (0.4 + f.bass), Math.sin(a) * 380 * (0.4 + f.bass), c, 0.005 + f.bass * 0.005);
             }
+          }
+          // every ~7 beats, black ink shoots in from the rim: a hard inward
+          // jet carrying negative dye — it carves a dark finger through the
+          // clouds and swirls with the flow like ink in water
+          if (f.beat > 0.9 && beatCount % 7 === 3) {
+            // gentle: a hard jet keeps the whole tank churning (velocity
+            // half-life ~6s) and shreds the clouds into wisps. Aim along
+            // this beat's first splat angle — black through empty water is
+            // invisible; the finger must pierce a fresh cloud to be seen
+            const a = beatCount * 0.7;
+            const jx = 0.5 + Math.cos(a) * 0.42, jy = 0.5 + Math.sin(a) * 0.42;
+            const k = 0.5 + f.bass * 0.5;
+            doSplat(jx, jy, -Math.cos(a) * 360 * k, -Math.sin(a) * 360 * k,
+                    [-0.55, -0.55, -0.55], 0.003);
           }
           if (f.onset > 0.9 && f.beat <= 0.9) {
             // off-centre like the beat ring — the middle stays a dark eye
