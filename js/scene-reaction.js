@@ -1,6 +1,6 @@
 /* ORPHIC scene — REACTION-DIFFUSION · turing bloom
  * Gray-Scott model (Pearson 1993, Karl Sims' formulation) on a half-res
- * float grid, 10 sim steps/frame. The feed/kill pair drifts between known
+ * float grid, 13 sim steps/frame (3 when quiet). The feed/kill pair drifts between known
  * pattern regimes (mitosis, worms, coral); bass perturbs the feed rate,
  * beats stamp fresh seeds, and the relief is lit from the B-field gradient
  * so the patterns read as embossed, growing tissue.
@@ -9,7 +9,7 @@
   'use strict';
   const M = window.ORPHIC;
 
-  const SIM_FRAG = M.FRAG_HEADER + M.GLSL_LIB + `
+  const SIM_FRAG = M.FRAG_HEADER + `
   uniform sampler2D uState;
   uniform vec2 uTexel;
   uniform float uFeed, uKill;
@@ -107,7 +107,7 @@
         resize(w, h) {
           const sw = Math.max(2, Math.round(w / 2)), sh = Math.max(2, Math.round(h / 2));
           if (!state) { state = glc.pingpong(sw, sh, { repeat: true }); seed(); }
-          else { state.a.resize(sw, sh); state.b.resize(sw, sh); seed(); }
+          else { state.resize(sw, sh); seed(); }
         },
         update(dt, audio, t) {
           if (!state) return;
@@ -162,7 +162,10 @@
           M.audioUniforms(pShow, audio, t);
           glc.draw(pShow, out);
         },
-        dispose() { if (state) state.dispose(); },
+        dispose() {
+          if (state) state.dispose();
+          for (const p of [pSim, pInit, pShow]) p.dispose();
+        },
       };
     },
   });

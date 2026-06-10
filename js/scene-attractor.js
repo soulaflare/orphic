@@ -54,9 +54,7 @@
   uniform int uDim;
   uniform float uZoom, uRot, uAspect, uGain, uHue;
   out vec3 vColor;
-  vec3 pal(float t, vec3 a, vec3 b, vec3 c, vec3 d) {
-    return a + b * cos(6.28318 * (c * t + d));
-  }
+  ${M.GLSL_COLOR}
   void main() {
     ivec2 tc = ivec2(gl_VertexID % uDim, gl_VertexID / uDim);
     vec4 s = texelFetch(uParticles, tc, 0);
@@ -118,7 +116,7 @@
       return {
         resize(w, h) {
           if (!accum) accum = glc.pingpong(w, h);
-          else { accum.a.resize(w, h); accum.b.resize(w, h); }
+          else accum.resize(w, h);
           accum.a.clear(); accum.b.clear();
         },
         update(dt, audio, t) {
@@ -165,15 +163,13 @@
 
           gl.bindFramebuffer(gl.FRAMEBUFFER, accum.write.fbo);
           gl.viewport(0, 0, accum.write.w, accum.write.h);
-          gl.useProgram(pDraw.handle);
-          pDraw._pendingTex.length = 0;
-          pDraw.i('uDim', DIM)
+          pDraw.use().i('uDim', DIM)
                .f('uZoom', zoom).f('uRot', rot)
                .f('uAspect', glc.width / glc.height)
                .f('uGain', 0.025 + f.level * 0.05)
                .f('uHue', f.centroid * 0.4 + f.phaseLevel * 0.01)
-               .tex('uParticles', particles.read.tex, 0);
-          pDraw._bindPending();
+               .tex('uParticles', particles.read.tex, 0)
+               .bind();
           gl.enable(gl.BLEND);
           gl.blendFunc(gl.ONE, gl.ONE);
           gl.bindVertexArray(vao);
@@ -191,6 +187,7 @@
           particles.dispose();
           if (accum) accum.dispose();
           gl.deleteVertexArray(vao);
+          for (const p of [pInit, pUpdate, pDraw, pFade, pShow]) p.dispose();
         },
       };
     },

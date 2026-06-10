@@ -98,11 +98,6 @@
                    texture(uField, pos + vec2(0, rf)).z - texture(uField, pos - vec2(0, rf)).z)
               / (dens * 0.25 + 2.0);
 
-    // Topological backbone: alignment + cohesion are CONSTANT and density-
-    // independent — never weakened by audio — and DOMINANT, so the flock stays
-    // one living body through every loud passage. Separation is a gentle
-    // constant that only bites in true clumps. (Audio used to quadruple
-    // separation and kick the cloud outward, which detonated it.)
     // Topological backbone: alignment dominates (coherent, sheet-like motion);
     // cohesion just keeps the body connected; separation gives the flock VOLUME
     // so it fills a region instead of collapsing to a knot. All density-
@@ -234,26 +229,11 @@
   precision highp float;
   uniform sampler2D uAgents;
   uniform int uDim;
-  uniform float uTime, uPointScale, uBass, uAspect, uLevel;
+  uniform float uTime, uPointScale, uBass, uAspect;
   uniform float uWaves[${MAX_WAVES * 4}]; // x, y, radius, amp per wave
   out float vAlpha;
   out vec3 vColor;
-  float hash12(vec2 p) {
-    vec3 p3 = fract(vec3(p.xyx) * 0.1031);
-    p3 += dot(p3, p3.yzx + 33.33);
-    return fract((p3.x + p3.y) * p3.z);
-  }
-  vec2 hash22(vec2 p) {
-    vec3 p3 = fract(vec3(p.xyx) * vec3(0.1031, 0.1030, 0.0973));
-    p3 += dot(p3, p3.yzx + 33.33);
-    return fract((p3.xx + p3.yz) * p3.zy);
-  }
-  float vnoise(vec2 p) {
-    vec2 i = floor(p), fr = fract(p);
-    vec2 u = fr * fr * (3.0 - 2.0 * fr);
-    return mix(mix(hash12(i), hash12(i + vec2(1, 0)), u.x),
-               mix(hash12(i + vec2(0, 1)), hash12(i + vec2(1, 1)), u.x), u.y);
-  }
+  ${M.GLSL_NOISE}
   ${CURL_GLSL}
   void main() {
     ivec2 tc = ivec2(gl_VertexID % uDim, gl_VertexID / uDim);
@@ -474,10 +454,7 @@
           field.clear();
           gl.bindFramebuffer(gl.FRAMEBUFFER, field.fbo);
           gl.viewport(0, 0, field.w, field.h);
-          gl.useProgram(pField.handle);
-          pField._pendingTex.length = 0;
-          pField.i('uDim', DIM).tex('uAgents', agents.read.tex, 0);
-          pField._bindPending();
+          pField.use().i('uDim', DIM).tex('uAgents', agents.read.tex, 0).bind();
           gl.enable(gl.BLEND);
           gl.blendFunc(gl.ONE, gl.ONE);
           gl.bindVertexArray(vao);
@@ -517,15 +494,13 @@
           // honor `out` like glc.draw does — transitions render scenes offscreen
           gl.bindFramebuffer(gl.FRAMEBUFFER, out ? out.fbo : null);
           gl.viewport(0, 0, out ? out.w : glc.width, out ? out.h : glc.height);
-          gl.useProgram(pDraw.handle);
-          pDraw._pendingTex.length = 0;
-          pDraw.i('uDim', DIM).f('uTime', t)
+          pDraw.use().i('uDim', DIM).f('uTime', t)
                .f('uPointScale', Math.min(window.devicePixelRatio || 1, 2))
-               .f('uBass', f.bass).f('uLevel', f.level)
+               .f('uBass', f.bass)
                .f('uAspect', glc.width / glc.height)
                .fv('uWaves', waveBuf)
-               .tex('uAgents', agents.read.tex, 0);
-          pDraw._bindPending();
+               .tex('uAgents', agents.read.tex, 0)
+               .bind();
           gl.enable(gl.BLEND);
           gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
           gl.bindVertexArray(vao);
@@ -536,14 +511,12 @@
           const ember = [1.0, 0.55, 0.28];
           if (trail.length) {
             gl.blendFunc(gl.ONE, gl.ONE);
-            gl.useProgram(pTrail.handle);
-            pTrail._pendingTex.length = 0;
+            pTrail.use();
             for (const s of trail) {
               pTrail.v2('uPos', s.x, s.y)
                     .f('uSize', (4 + s.life * 12) * dpr)
                     .v3('uCol', ember[0], ember[1], ember[2])
                     .f('uA', s.life * s.life * (0.10 + f.level * 0.30 + f.beat * 0.20));
-              pTrail._bindPending();
               gl.drawArrays(gl.POINTS, 0, 1);
             }
             gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
@@ -554,9 +527,7 @@
             const age = 1.8 - pred.t;
             const alpha = Math.min(1, age / 0.15) * Math.min(1, pred.t / 0.3);
             const aspect = glc.width / glc.height;
-            gl.useProgram(pHawk.handle);
-            pHawk._pendingTex.length = 0;
-            pHawk.v2('uPos', pred.x, pred.y)
+            pHawk.use().v2('uPos', pred.x, pred.y)
                  .f('uSize', (30 + f.bassFast * 14) * dpr)
                  .f('uAngle', Math.atan2(pred.vy, pred.vx * aspect))
                  .f('uTime', t)
@@ -565,7 +536,6 @@
                  .f('uGlow', f.beat * 1.4 + f.onset * 0.6)
                  .v3('uRimCol', ember[0], ember[1], ember[2])
                  .f('uAlpha', alpha * 0.95);
-            pHawk._bindPending();
             gl.drawArrays(gl.POINTS, 0, 1);
           }
           gl.disable(gl.BLEND);
@@ -574,6 +544,7 @@
           agents.dispose();
           field.dispose();
           gl.deleteVertexArray(vao);
+          for (const p of [pInit, pField, pUpdate, pSky, pDraw, pHawk, pTrail]) p.dispose();
         },
       };
     },

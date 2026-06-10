@@ -8,6 +8,7 @@
  *   Linux   — playerctl when present, raw MPRIS over dbus-send otherwise
  */
 import { execFile } from 'node:child_process'
+import path from 'node:path'
 
 export type MediaCommand = 'playpause' | 'next' | 'previous'
 export const MEDIA_COMMANDS: ReadonlySet<string> = new Set(['playpause', 'next', 'previous'])
@@ -83,6 +84,12 @@ const WIN_VK: Record<MediaCommand, number> = {
   previous: 0xb1, //  VK_MEDIA_PREV_TRACK
 }
 
+// absolute path: resolving powershell.exe through PATH invites binary planting
+const WIN_POWERSHELL = path.join(
+  process.env.SystemRoot ?? 'C:\\Windows',
+  'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe',
+)
+
 async function winMedia(cmd: MediaCommand): Promise<MediaResult> {
   const vk = '0x' + WIN_VK[cmd].toString(16)
   const ps = [
@@ -92,7 +99,7 @@ async function winMedia(cmd: MediaCommand): Promise<MediaResult> {
     `$k::keybd_event(${vk}, 0, 3, [UIntPtr]::Zero)`, // … | KEYEVENTF_KEYUP
   ].join('; ')
   try {
-    await run('powershell.exe', [
+    await run(WIN_POWERSHELL, [
       '-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-Command', ps,
     ])
     return { ok: true }

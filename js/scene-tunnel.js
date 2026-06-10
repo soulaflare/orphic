@@ -109,14 +109,12 @@
         },
         render(out, audio, t) {
           prog.use().v2('uRes', glc.width, glc.height)
-              .f('uTravel', travel).f('uTwist', twist);
-          const gl = glc.gl;
-          const loc = gl.getUniformLocation(prog.handle, 'uRings[0]');
-          if (loc) gl.uniform1fv(loc, rings);
+              .f('uTravel', travel).f('uTwist', twist)
+              .fv('uRings', rings);
           M.audioUniforms(prog, audio, t);
           glc.draw(prog, out);
         },
-        dispose() {},
+        dispose() { prog.dispose(); },
       };
     },
   });

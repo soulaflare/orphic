@@ -142,8 +142,8 @@
   uniform float uHarmonic, uPercussive, uQuiet, uBurst;
   `;
 
-  /** GLSL: IQ cosine palette + hsv + tonemap + hash/noise utilities. */
-  M.GLSL_LIB = `
+  /** GLSL: IQ cosine palette + hsv + tonemap (vertex- and fragment-safe). */
+  M.GLSL_COLOR = `
   vec3 pal(float t, vec3 a, vec3 b, vec3 c, vec3 d) {
     return a + b * cos(6.28318 * (c * t + d));
   }
@@ -154,6 +154,10 @@
   vec3 aces(vec3 x) {
     return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0);
   }
+  `;
+
+  /** GLSL: hash/noise utilities (vertex- and fragment-safe). */
+  M.GLSL_NOISE = `
   float hash12(vec2 p) {
     vec3 p3 = fract(vec3(p.xyx) * 0.1031);
     p3 += dot(p3, p3.yzx + 33.33);
@@ -176,6 +180,9 @@
     return v;
   }
   `;
+
+  /** GLSL: full utility set — palette/tonemap + hash/noise. */
+  M.GLSL_LIB = M.GLSL_COLOR + M.GLSL_NOISE;
 
   M.FRAG_HEADER = `#version 300 es
   precision highp float;

@@ -9,6 +9,9 @@
   'use strict';
   const M = window.ORPHIC = window.ORPHIC || {};
 
+  // shared wake timeout: the cursor sleeps on the HUD's rhythm (main.js)
+  M.HUD_WAKE_SECONDS = 3.5;
+
   M.createCursor = function () {
     // touch / coarse pointers keep the native cursor story
     if (!window.matchMedia || !matchMedia('(pointer: fine)').matches) return null;
@@ -36,10 +39,10 @@
 
     window.addEventListener('mousemove', e => {
       mx = e.clientX; my = e.clientY;
-      fade = 3.5; // sleeps on the HUD's rhythm
+      fade = M.HUD_WAKE_SECONDS;
       if (!seen) { seen = true; hx = mx; hy = my; }
     });
-    window.addEventListener('mousedown', () => { down = true; fade = 3.5; });
+    window.addEventListener('mousedown', () => { down = true; fade = M.HUD_WAKE_SECONDS; });
     window.addEventListener('mouseup', e => {
       down = false;
       ripple.style.left = e.clientX + 'px';

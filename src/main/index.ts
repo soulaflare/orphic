@@ -50,15 +50,21 @@ const CSP = [
 function registerAppProtocol(): void {
   const root = app.getAppPath()
   protocol.handle(APP_SCHEME, async (request) => {
-    const rel = decodeURIComponent(new URL(request.url).pathname).replace(/^\/+/, '') || 'index.html'
-    const file = path.resolve(root, rel)
-    if (file !== root && !file.startsWith(root + path.sep)) {
-      return new Response('Forbidden', { status: 403 })
+    try {
+      // decodeURIComponent throws on malformed escapes; net.fetch rejects on
+      // missing files — both must answer with a response, not a net error
+      const rel = decodeURIComponent(new URL(request.url).pathname).replace(/^\/+/, '') || 'index.html'
+      const file = path.resolve(root, rel)
+      if (!file.startsWith(root + path.sep)) {
+        return new Response('Forbidden', { status: 403 })
+      }
+      const res = await net.fetch(pathToFileURL(file).toString())
+      const headers = new Headers(res.headers)
+      headers.set('Content-Security-Policy', CSP)
+      return new Response(res.body, { status: res.status, headers })
+    } catch {
+      return new Response('Not Found', { status: 404 })
     }
-    const res = await net.fetch(pathToFileURL(file).toString())
-    const headers = new Headers(res.headers)
-    headers.set('Content-Security-Policy', CSP)
-    return new Response(res.body, { status: res.status, headers })
   })
 }
 
@@ -108,6 +114,13 @@ function createWindow(): BrowserWindow {
 
   win.once('ready-to-show', () => win.show())
 
+  // a crashed renderer must not leave a permanently blank window
+  win.webContents.on('render-process-gone', (_event, details) => {
+    if (details.reason === 'clean-exit' || details.reason === 'killed') return
+    console.error(`[main] renderer gone (${details.reason}) — reloading`)
+    win.webContents.reload()
+  })
+
   // Local-only app: never open child windows or navigate off-origin.
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   win.webContents.on('will-navigate', (event, url) => {
@@ -156,7 +169,7 @@ if (!isSmokeTest && !app.requestSingleInstanceLock()) {
     return sendMediaCommand(cmd as MediaCommand)
   })
 
-  void app.whenReady().then(() => {
+  app.whenReady().then(() => {
     registerAppProtocol()
     hardenSession(session.defaultSession)
     mainWindow = createWindow()
@@ -165,6 +178,10 @@ if (!isSmokeTest && !app.requestSingleInstanceLock()) {
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) mainWindow = createWindow()
     })
+  }).catch((err: unknown) => {
+    // a failed startup must not leave a windowless zombie process
+    console.error('[main] startup failed:', err)
+    app.exit(1)
   })
 
   app.on('window-all-closed', () => {

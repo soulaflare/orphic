@@ -108,7 +108,7 @@
           M.audioUniforms(prog, audio, t);
           glc.draw(prog, out);
         },
-        dispose() {},
+        dispose() { prog.dispose(); },
       };
     },
   });

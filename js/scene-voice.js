@@ -27,7 +27,7 @@
   // bake the tract cavity once per frame: r=air, g=damping, b=glottal source,
   // a=constriction (noise-injection site). A vertical tube, pinched at the
   // vowel's constriction, closed at the glottis, radiating at the lips.
-  const MASK_FRAG = M.FRAG_HEADER + M.GLSL_LIB + `
+  const MASK_FRAG = M.FRAG_HEADER + `
   uniform float uConHeight, uConTight, uLipOpen;
   void main() {
     float x = vUV.x, y = vUV.y, cx = 0.5;
@@ -197,7 +197,11 @@
           M.audioUniforms(pShow, audio, t);
           glc.draw(pShow, out);
         },
-        dispose() { state.dispose(); maskT.dispose(); },
+        dispose() {
+          state.dispose();
+          maskT.dispose();
+          for (const p of [pMask, pSim, pShow]) p.dispose();
+        },
       };
     },
   });

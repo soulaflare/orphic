@@ -42,7 +42,8 @@
     fragColor = vec4(h, s.g, s.b, 1.0);
   }`;
 
-  const MARCH_FRAG = M.FRAG_HEADER + M.GLSL_LIB + M.GLSL_AUDIO + M.GLSL_SPECTRUM + `
+  const MARCH_FRAG = M.FRAG_HEADER + M.GLSL_LIB + M.GLSL_AUDIO + `
+  uniform sampler2D uSpectrogram; // the smoothed pre-pass, not the raw history
   uniform vec2 uRes;
   uniform float uAmp, uSway, uKeyHue;
   uniform vec4 uMeteor; // az, height, progress, active
@@ -296,8 +297,7 @@
 
           pMarch.use();
           M.audioUniforms(pMarch, audio, t);
-          M.spectrumUniforms(pMarch, audio, 0);
-          pMarch.tex('uSpectrogram', smoothT.tex, 2) // smoothed override
+          pMarch.tex('uSpectrogram', smoothT.tex, 0)
                 .v2('uRes', buf.w, buf.h)
                 .f('uAmp', 1.25 + f.level * 0.6)
                 .f('uSway', Math.sin(f.phaseLevel * 0.18) * 1.1)
@@ -313,6 +313,7 @@
         dispose() {
           if (buf) buf.dispose();
           if (smoothT) smoothT.dispose();
+          for (const p of [pSmooth, pMarch, pShow]) p.dispose();
         },
       };
     },

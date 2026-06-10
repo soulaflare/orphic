@@ -121,7 +121,7 @@
       const pCover = glc.program(COVER_FRAG);
       const coverT = glc.target(4, 4);
       const coverBuf = new Float32Array(64);
-      let beatCount = 0, reseedTimer = 0, coverTimer = 0;
+      let beatCount = 0, reseedTimer = 0, coverTimer = 0, reseedDebounce = 0;
       // covSmooth starts low so the establishment shield (gentle regime, no
       // erosion) covers the young colony until real probe readings arrive
       let muBias = 0, covOver = 0, covUnder = 0, covSmooth = 0.15, covRaw = -1; // homeostasis state
@@ -221,13 +221,16 @@
           // coarse grid: creatures span ~2R cells, so 1/7 of the screen makes
           // them big, visible organisms (and the convolution 3x cheaper)
           const sw = Math.max(2, Math.round(w / 7)), sh = Math.max(2, Math.round(h / 7));
-          if (!state) state = glc.pingpong(sw, sh, { repeat: true });
-          else { state.a.resize(sw, sh); state.b.resize(sw, sh); }
-          seed();
+          if (!state) { state = glc.pingpong(sw, sh, { repeat: true }); seed(); }
+          // the verified seed is expensive (up to 400 sim passes + readback),
+          // so during an interactive resize wait for the size to settle
+          else { state.resize(sw, sh); reseedDebounce = 0.35; }
         },
         update(dt, audio, t) {
           if (!state) return;
           const f = audio.f;
+
+          if (reseedDebounce > 0 && (reseedDebounce -= dt) <= 0) seed();
 
           // the tide: the density target swings between sparse and lush over
           // ~25s of loud music (slower when quiet). Probe units undercount
@@ -320,7 +323,11 @@
           M.audioUniforms(pShow, audio, t);
           glc.draw(pShow, out);
         },
-        dispose() { if (state) state.dispose(); coverT.dispose(); },
+        dispose() {
+          if (state) state.dispose();
+          coverT.dispose();
+          for (const p of [pSim, pInit, pShow, pCover]) p.dispose();
+        },
       };
     },
   });

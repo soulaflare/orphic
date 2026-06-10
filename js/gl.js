@@ -50,9 +50,13 @@
         return s;
       };
       const p = gl.createProgram();
-      gl.attachShader(p, compile(gl.VERTEX_SHADER, vertSrc || VERT));
-      gl.attachShader(p, compile(gl.FRAGMENT_SHADER, fragSrc));
+      const vs = compile(gl.VERTEX_SHADER, vertSrc || VERT);
+      const fs = compile(gl.FRAGMENT_SHADER, fragSrc);
+      gl.attachShader(p, vs);
+      gl.attachShader(p, fs);
       gl.linkProgram(p);
+      gl.deleteShader(vs);
+      gl.deleteShader(fs);
       if (!gl.getProgramParameter(p, gl.LINK_STATUS)) {
         throw new Error('Program link error: ' + gl.getProgramInfoLog(p));
       }
@@ -72,7 +76,7 @@
         swap() { const t = this.a; this.a = this.b; this.b = t; },
         get read() { return this.a; },
         get write() { return this.b; },
-        resize(gl2, nw, nh) { this.a.resize(nw, nh); this.b.resize(nw, nh); },
+        resize(nw, nh) { this.a.resize(nw, nh); this.b.resize(nw, nh); },
         dispose() { this.a.dispose(); this.b.dispose(); },
       };
     }
@@ -130,6 +134,18 @@
         const l = this._loc(name);
         if (l) gl.uniform1i(l, unit);
       }
+    }
+    /** Activate the program and bind queued textures (for non-fullscreen draws). */
+    bind() {
+      this.glc.gl.useProgram(this.handle);
+      this._bindPending();
+      return this;
+    }
+    dispose() {
+      this.glc.gl.deleteProgram(this.handle);
+      this.handle = null;
+      this._uniforms = {};
+      this._pendingTex.length = 0;
     }
   }
 

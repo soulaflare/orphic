@@ -71,11 +71,9 @@
   precision highp float;
   uniform sampler2D uParticles;
   uniform int uDim;
-  uniform float uPointSize, uTime, uCentroid, uBass, uTreble, uLevel;
+  uniform float uPointSize, uTime, uCentroid, uLevel;
   out vec3 vColor;
-  vec3 pal(float t, vec3 a, vec3 b, vec3 c, vec3 d) {
-    return a + b * cos(6.28318 * (c * t + d));
-  }
+  ${M.GLSL_COLOR}
   void main() {
     ivec2 tc = ivec2(gl_VertexID % uDim, gl_VertexID / uDim);
     vec4 p = texelFetch(uParticles, tc, 0);
@@ -137,7 +135,7 @@
       return {
         resize(w, h) {
           if (!accum) accum = glc.pingpong(w, h);
-          else { accum.a.resize(w, h); accum.b.resize(w, h); }
+          else accum.resize(w, h);
           accum.a.clear(); accum.b.clear();
         },
         update(dt, audio, t) {
@@ -159,14 +157,12 @@
           const f = audio.f;
           gl.bindFramebuffer(gl.FRAMEBUFFER, accum.write.fbo);
           gl.viewport(0, 0, accum.write.w, accum.write.h);
-          gl.useProgram(pDraw.handle);
-          pDraw._pendingTex.length = 0;
-          pDraw.i('uDim', DIM)
+          pDraw.use().i('uDim', DIM)
                .f('uPointSize', (1.2 + f.bassFast * 2.2) * Math.min(window.devicePixelRatio || 1, 2))
                .f('uTime', t).f('uCentroid', f.centroid)
-               .f('uBass', f.bass).f('uTreble', f.treble).f('uLevel', f.level)
-               .tex('uParticles', particles.read.tex, 0);
-          pDraw._bindPending();
+               .f('uLevel', f.level)
+               .tex('uParticles', particles.read.tex, 0)
+               .bind();
           gl.enable(gl.BLEND);
           gl.blendFunc(gl.ONE, gl.ONE);
           gl.bindVertexArray(vao);
@@ -184,6 +180,7 @@
           particles.dispose();
           if (accum) accum.dispose();
           gl.deleteVertexArray(vao);
+          for (const p of [pInit, pUpdate, pDraw, pFade, pShow]) p.dispose();
         },
       };
     },

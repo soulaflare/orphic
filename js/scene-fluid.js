@@ -160,6 +160,13 @@
         glc.draw(progs.splat, dye.write); dye.swap();
       }
 
+      function hsv(h, s, v) {
+        const i = Math.floor(h * 6), fr = h * 6 - i;
+        const p = v * (1 - s), q = v * (1 - fr * s), u = v * (1 - (1 - fr) * s);
+        const k = i % 6;
+        return [[v, u, p], [q, v, p], [p, v, u], [p, q, v], [u, p, v], [v, p, q]][k];
+      }
+
       return {
         resize(w, h) { alloc(w, h); primed = false; },
         update(dt, audio, t) {
@@ -257,7 +264,9 @@
 
           progs.div.use().v2('uTexel', sTexel[0], sTexel[1]).tex('uVelocity', vel.read.tex, 0);
           glc.draw(progs.div, divT);
-          press.a.clear(); press.b.clear();
+          // zero only the initial pressure guess — the first Jacobi pass
+          // fully overwrites the write target
+          press.read.clear();
           for (let i = 0; i < 20; i++) {
             progs.press.use().v2('uTexel', sTexel[0], sTexel[1])
               .tex('uPressure', press.read.tex, 0).tex('uDivergence', divT.tex, 1);
@@ -289,15 +298,9 @@
         },
         dispose() {
           if (vel) { vel.dispose(); dye.dispose(); curlT.dispose(); divT.dispose(); press.dispose(); }
+          for (const p of Object.values(progs)) p.dispose();
         },
       };
-
-      function hsv(h, s, v) {
-        const i = Math.floor(h * 6), fr = h * 6 - i;
-        const p = v * (1 - s), q = v * (1 - fr * s), u = v * (1 - (1 - fr) * s);
-        const k = i % 6;
-        return [[v, u, p], [q, v, p], [p, v, u], [p, q, v], [u, p, v], [v, p, q]][k];
-      }
     },
   });
 })();

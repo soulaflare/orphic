@@ -141,7 +141,7 @@
               .f('uAngP', angP).f('uCD', cd).f('uCR2', cr2);
           glc.draw(prog, out);
         },
-        dispose() {},
+        dispose() { prog.dispose(); },
       };
     },
   });

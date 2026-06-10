@@ -181,7 +181,7 @@
         resize(w, h) {
           const tw = Math.max(2, Math.round(w / 2)), th = Math.max(2, Math.round(h / 2));
           if (!trail) trail = glc.pingpong(tw, th, { repeat: true });
-          else { trail.a.resize(tw, th); trail.b.resize(tw, th); }
+          else trail.resize(tw, th);
           trail.a.clear(); trail.b.clear();
           if (!seeded) seed();
         },
@@ -201,13 +201,11 @@
           // 2. deposit pheromone (additive points into current trail)
           gl.bindFramebuffer(gl.FRAMEBUFFER, trail.read.fbo);
           gl.viewport(0, 0, trail.read.w, trail.read.h);
-          gl.useProgram(pDeposit.handle);
-          pDeposit._pendingTex.length = 0;
-          pDeposit.i('uDim', DIM)
+          pDeposit.use().i('uDim', DIM)
                   .f('uDeposit', (0.020 + audio.f.level * 0.035) * (1 - audio.f.quiet * 0.6))
                   .v3('uBands', audio.f.bass, audio.f.mid, audio.f.treble)
-                  .tex('uAgents', agents.read.tex, 0);
-          pDeposit._bindPending();
+                  .tex('uAgents', agents.read.tex, 0)
+                  .bind();
           gl.enable(gl.BLEND);
           gl.blendFunc(gl.ONE, gl.ONE);
           gl.bindVertexArray(depositVAO);
@@ -232,6 +230,7 @@
           agents.dispose();
           if (trail) trail.dispose();
           gl.deleteVertexArray(depositVAO);
+          for (const p of [pInit, pUpdate, pDeposit, pDiffuse, pShow]) p.dispose();
         },
       };
     },

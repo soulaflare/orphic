@@ -100,7 +100,7 @@
           prog.v2('uRes', glc.width, glc.height).f('uKeyHue', keyHue);
           glc.draw(prog, out);
         },
-        dispose() {},
+        dispose() { prog.dispose(); },
       };
     },
   });

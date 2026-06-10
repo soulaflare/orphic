@@ -10,7 +10,17 @@
 
   window.addEventListener('DOMContentLoaded', () => {
     const canvas = document.getElementById('view');
-    const glc = new M.GL(canvas);
+    let glc;
+    try {
+      glc = new M.GL(canvas);
+    } catch (err) {
+      // no WebGL2: leave the landing overlay up with an explanation instead
+      // of a dead start button
+      document.querySelector('#overlay .cta').disabled = true;
+      document.querySelector('#overlay .hint').textContent =
+        'this browser or device has no WebGL2 — ORPHIC needs it to draw';
+      return;
+    }
     const engine = new M.AudioEngine();
     const features = new M.FeatureExtractor(engine);
     const classifier = new M.SpeechMusicClassifier(features);
@@ -53,12 +63,33 @@
         subs[window.orphic.platform] || 'everything playing on this device';
     }
 
-    function showToast(msg) {
+    let toastTimer = 0;
+    function showToast(msg, seconds) {
       ui.toast.textContent = msg;
       ui.toast.classList.remove('hidden');
+      clearTimeout(toastTimer);
+      if (seconds) toastTimer = setTimeout(hideToast, seconds * 1000);
     }
     function hideToast() {
       ui.toast.classList.add('hidden');
+    }
+
+    // a GPU reset silently freezes WebGL while audio keeps running — pause
+    // the loop and reload once the browser hands the context back
+    let contextLost = false;
+    canvas.addEventListener('webglcontextlost', e => {
+      e.preventDefault(); // required, or the context is never restored
+      contextLost = true;
+      showToast('graphics device reset — recovering…');
+    });
+    canvas.addEventListener('webglcontextrestored', () => location.reload());
+
+    // the pattern count in the copy is derived — scenes self-register
+    const COUNT_WORDS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six',
+      'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve', 'thirteen',
+      'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen', 'twenty'];
+    for (const el of document.querySelectorAll('.pattern-count')) {
+      el.textContent = (COUNT_WORDS[M.scenes.length] || M.scenes.length) + ' patterns';
     }
 
     // ---- system transport (desktop only) ----
@@ -68,7 +99,7 @@
     // No player API can tell us play/pause state across apps; infer it from
     // the captured signal instead. A press flips the icon optimistically and
     // holds it briefly so the dying/arriving audio can't fight the flip.
-    let mediaPlaying = false, mediaSilence = 0, mediaHold = 0, mediaToastTimer = 0;
+    let mediaPlaying = false, mediaSilence = 0, mediaHold = 0;
     function setPlayingUi(p) {
       if (p === mediaPlaying) return;
       mediaPlaying = p;
@@ -82,11 +113,7 @@
         mediaSilence = mediaPlaying ? 0 : 99;
       }
       media(cmd).then(res => {
-        if (res && res.ok === false && res.hint) {
-          showToast(res.hint);
-          clearTimeout(mediaToastTimer);
-          mediaToastTimer = setTimeout(hideToast, 6000);
-        }
+        if (res && res.ok === false && res.hint) showToast(res.hint, 6);
       }).catch(() => {});
     }
     if (media) {
@@ -251,9 +278,19 @@
         return;
       }
       if (idx === activeIdx) return;
+      let incoming;
+      try {
+        incoming = defs[idx].create(glc);
+      } catch (err) {
+        // a pattern that fails to build (e.g. a driver-specific shader bug)
+        // must not corrupt the active one — stay put, let the cycle move on
+        console.error('pattern failed to create: ' + defs[idx].name, err);
+        cycleTimer = 0;
+        return;
+      }
       if (active) trans.start(active); // outgoing scene lives on in the blender
       activeIdx = idx;
-      active = defs[idx].create(glc);
+      active = incoming;
       if (active.resize) active.resize(glc.width, glc.height);
       hudScene(idx);
       cycleTimer = 0;
@@ -358,7 +395,7 @@
         ui.overlay.classList.add('hidden');
       } catch (err) {
         if (err.name === 'NotAllowedError') return; // user cancelled the picker
-        alert((desktop ? 'System audio unavailable: ' : 'Tab audio unavailable: ') + err.message);
+        showToast((desktop ? 'system audio unavailable: ' : 'tab audio unavailable: ') + err.message, 8);
       } finally {
         starting = false;
       }
@@ -418,7 +455,7 @@
     // mouse wakes the HUD (not on the landing screen — nothing to control yet)
     window.addEventListener('mousemove', () => {
       if (engine.mode === 'none') return;
-      hudFade = 3.5;
+      hudFade = M.HUD_WAKE_SECONDS;
       ui.hud.classList.remove('asleep');
       ui.helpBar.classList.remove('asleep');
     });
@@ -502,6 +539,7 @@
     let lastMode = 'music', pendingMode = null, pendingModeT = 0;
     function frame() {
       requestAnimationFrame(frame);
+      if (contextLost) return; // frozen until webglcontextrestored reloads
       const now = performance.now() / 1000;
       let dt = Math.min(0.05, now - lastT);
       lastT = now;

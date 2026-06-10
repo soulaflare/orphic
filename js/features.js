@@ -2,8 +2,8 @@
  * Turns raw FFT/waveform into musically meaningful, frame-rate signals:
  *   bands (bass/mid/treble) with attack/release envelopes,
  *   spectral flux + adaptive onset detection, beat tracking (BPM via
- *   autocorrelation of onset strength), spectral centroid/flatness/rolloff,
- *   zero-crossing rate, pitch (NSDF-lite autocorrelation).
+ *   autocorrelation of onset strength), spectral centroid/flatness,
+ *   pitch (NSDF-lite autocorrelation).
  */
 (function () {
   'use strict';
@@ -33,13 +33,10 @@
       // Smoothed envelopes (0..~1)
       this.bass = 0; this.mid = 0; this.treble = 0; this.level = 0;
       this.bassFast = 0; // snappier bass for kick punch
-      // Raw instantaneous values
-      this.rawBass = 0; this.rawMid = 0; this.rawTreble = 0; this.rawLevel = 0;
+      this.rawLevel = 0; // instantaneous level, pre-envelope (the classifier's input)
 
       this.centroid = 0;       // normalized 0..1 (0..~8kHz)
       this.flatness = 0;       // 0 tonal .. 1 noisy
-      this.rolloff = 0;        // 0..1
-      this.zcr = 0;            // zero crossings/sample, smoothed
       this.flux = 0;           // smoothed spectral flux
       this.fluxRaw = 0;
 
@@ -63,10 +60,9 @@
 
       // HPSS (Fitzgerald 2010, median-filter proxy): harmonic = sustained
       // tonal energy (horizontal spectrogram ridges), percussive = broadband
-      // transient energy (vertical), harmRatio = balance between them
+      // transient energy (vertical)
       this.harmonic = 0;
       this.percussive = 0;
-      this.harmRatio = 0.5;
       this._hpssHist = null;
       this._hpssIdx = 0;
       this._med9 = new Uint8Array(9);
@@ -132,7 +128,7 @@
       this._agc = Math.max(this._agc * Math.pow(0.5, dt / 8), rms, 1e-4); // 8s half-life decay
       const lvl = Math.min(1, rms / this._agc);
 
-      this.rawBass = bass; this.rawMid = mid; this.rawTreble = treb; this.rawLevel = lvl;
+      this.rawLevel = lvl;
       this.bass     = envFollow(this.bass, bass, 0.02, 0.18, dt);
       this.bassFast = envFollow(this.bassFast, bass, 0.008, 0.08, dt);
       this.mid      = envFollow(this.mid, mid, 0.03, 0.22, dt);
@@ -140,27 +136,18 @@
       this.level    = envFollow(this.level, lvl, 0.02, 0.25, dt);
 
       // ---- spectral shape ----
-      let wSum = 0, mSum = 0, geo = 0, ari = 0, cum = 0, total = 0;
+      let wSum = 0, mSum = 0, geo = 0, ari = 0;
       const shapeEnd = Math.min(n, Math.round(8000 / binHz));
       for (i = 1; i < shapeEnd; i++) {
         const m = freq[i] / 255;
         wSum += m * i; mSum += m;
         const p = m + 1e-6;
         geo += Math.log(p); ari += p;
-        total += m;
       }
       const centroidBin = mSum > 1e-4 ? wSum / mSum : 0;
       this.centroid = envFollow(this.centroid, centroidBin / shapeEnd, 0.05, 0.05, dt);
       const flat = mSum > 1e-4 ? Math.exp(geo / (shapeEnd - 1)) / (ari / (shapeEnd - 1)) : 1;
       this.flatness = envFollow(this.flatness, flat, 0.1, 0.1, dt);
-      let roll = 0;
-      for (i = 1; i < shapeEnd && cum < total * 0.85; i++) cum += freq[i] / 255, roll = i;
-      this.rolloff = envFollow(this.rolloff, roll / shapeEnd, 0.1, 0.1, dt);
-
-      // ---- zero-crossing rate ----
-      let zc = 0;
-      for (i = 1; i < time.length; i++) if ((time[i - 1] < 0) !== (time[i] < 0)) zc++;
-      this.zcr = envFollow(this.zcr, zc / time.length, 0.08, 0.08, dt);
 
       // ---- chroma (12 pitch classes) ----
       this._updateChroma(freq, binHz, dt);
@@ -309,7 +296,6 @@
       const hAvg = hSum / (N * 255), pAvg = pSum / (N * 255);
       this.harmonic = envFollow(this.harmonic, Math.min(1, hAvg * 3.5), 0.04, 0.30, dt);
       this.percussive = envFollow(this.percussive, Math.min(1, pAvg * 3.5), 0.012, 0.10, dt);
-      this.harmRatio = envFollow(this.harmRatio, hAvg / (hAvg + pAvg + 1e-6), 0.25, 0.25, dt);
     }
 
     _updateChroma(freq, binHz, dt) {

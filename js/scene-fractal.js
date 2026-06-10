@@ -173,7 +173,10 @@
           M.audioUniforms(pShow, audio, t);
           glc.draw(pShow, out);
         },
-        dispose() { if (buf) buf.dispose(); },
+        dispose() {
+          if (buf) buf.dispose();
+          pMarch.dispose(); pShow.dispose();
+        },
       };
     },
   });

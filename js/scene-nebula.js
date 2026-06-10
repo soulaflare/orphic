@@ -167,7 +167,10 @@
                .v2('uTexel', 1 / buf.w, 1 / buf.h);
           glc.draw(pShow, out);
         },
-        dispose() { if (buf) buf.dispose(); },
+        dispose() {
+          if (buf) buf.dispose();
+          pMarch.dispose(); pShow.dispose();
+        },
       };
     },
   });

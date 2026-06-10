@@ -92,7 +92,7 @@
           if (!sceneT) sceneT = glc.target(w, h);
           else sceneT.resize(w, h);
           if (!accum) accum = glc.pingpong(w, h);
-          else { accum.a.resize(w, h); accum.b.resize(w, h); }
+          else accum.resize(w, h);
           accum.a.clear(); accum.b.clear();
         },
         update(dt, audio, t) {
@@ -132,6 +132,7 @@
         dispose() {
           if (sceneT) sceneT.dispose();
           if (accum) accum.dispose();
+          for (const p of [pScene, pFeed, pShow]) p.dispose();
         },
       };
     },
