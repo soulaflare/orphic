@@ -247,7 +247,7 @@ html, body {
 /* ---------- help bar (wakes and sleeps with the HUD) ---------- */
 #help-bar {
   position: fixed; bottom: 0; left: 0; right: 0;
-  display: flex; justify-content: center; flex-wrap: wrap; gap: 1.3rem;
+  display: flex; justify-content: center; flex-wrap: wrap; gap: 1.1rem 2.2rem;
   padding: 1.5rem 1rem 0.95rem;
   background: linear-gradient(transparent, rgba(3, 2, 8, 0.5));
   font-size: 0.62rem; letter-spacing: 0.12em; color: var(--dim);
@@ -256,6 +256,17 @@ html, body {
   pointer-events: none;
 }
 #help-bar.asleep { opacity: 0; }
+/* shortcuts cluster by what they drive: patterns · player · app */
+.help-group { display: flex; align-items: baseline; gap: 1.3rem; }
+.help-group[hidden] { display: none; }
+.help-label {
+  font-size: 0.54rem; letter-spacing: 0.3em; text-transform: uppercase;
+  color: rgba(232, 230, 240, 0.26);
+}
+.help-group + .help-group {
+  border-left: 1px solid rgba(255, 255, 255, 0.12);
+  padding-left: 2.2rem;
+}
 #help-bar kbd {
   font-family: inherit;
   color: var(--fg);
