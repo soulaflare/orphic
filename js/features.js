@@ -8,7 +8,8 @@
 (function () {
   'use strict';
 
-  const HIST = 256; // ~4.3s of onset history at 60fps
+  const HIST = 512;        // ~8.5s of onset history on the 60Hz envelope grid
+  const ENV_STEP = 1 / 60; // flux is resampled onto this fixed grid (rAF rate varies)
 
   function envFollow(current, target, attack, release, dt) {
     const k = target > current ? attack : release;
@@ -83,6 +84,10 @@
       this._prevSpec = null;
       this._fluxHist = new Float32Array(HIST);
       this._fluxIdx = 0;
+      this._envT = 0;    // time owed to the 60Hz envelope grid
+      this._envMax = 0;  // peak flux within the current grid slot
+      this._bpmHist = []; // recent raw tempo estimates, for median gating
+      this._bpmMiss = 0;  // consecutive estimates disagreeing with the lock
       this._lastOnsetT = 0;
       this._lastBeatT = 0;
       this._time = 0;
@@ -179,8 +184,17 @@
       this.fluxRaw = flux;
       this.flux = envFollow(this.flux, flux, 0.03, 0.15, dt);
 
-      this._fluxHist[this._fluxIdx] = flux;
-      this._fluxIdx = (this._fluxIdx + 1) % HIST;
+      // resample flux onto a fixed 60Hz grid — rAF runs anywhere from 24 to
+      // 120Hz (ProMotion), and tempo lags are only meaningful on a steady
+      // clock. Keep each slot's peak so onset spikes survive resampling.
+      this._envMax = Math.max(this._envMax, flux);
+      this._envT += dt;
+      while (this._envT >= ENV_STEP) {
+        this._envT -= ENV_STEP;
+        this._fluxHist[this._fluxIdx] = this._envMax;
+        this._fluxIdx = (this._fluxIdx + 1) % HIST;
+        this._envMax = 0;
+      }
 
       // adaptive threshold: mean + k*std over recent history
       let mean = 0;
@@ -200,7 +214,7 @@
       this._tempoTimer = (this._tempoTimer || 0) + dt;
       if (this._tempoTimer > 0.5) {
         this._tempoTimer = 0;
-        this._estimateTempo(dt);
+        this._estimateTempo();
       }
 
       // beat phase + pulse
@@ -283,8 +297,8 @@
       }
     }
 
-    _estimateTempo(dt) {
-      // autocorrelate flux history; frame spacing assumed ~1/60s.
+    _estimateTempo() {
+      // autocorrelate the flux envelope (fixed 60Hz grid, so lag→BPM is exact)
       const fps = 60;
       const minLag = Math.round(fps * 60 / 200); // 200 BPM
       const maxLag = Math.round(fps * 60 / 60);  // 60 BPM
@@ -296,21 +310,72 @@
       mean /= HIST;
       for (let i = 0; i < HIST; i++) h[i] -= mean;
 
-      let bestLag = 0, bestVal = 0, norm = 1e-9;
+      let norm = 1e-9;
       for (let i = 0; i < HIST; i++) norm += h[i] * h[i];
-      for (let lag = minLag; lag <= maxLag && lag < HIST / 2; lag++) {
+      // normalized autocorrelation out to 3x the slowest beat lag so the
+      // harmonic scoring below can see each candidate's multiples
+      const acN = Math.min((HIST / 2) | 0, maxLag * 3 + 1);
+      const ac = new Float32Array(acN + 1);
+      for (let lag = minLag; lag <= acN; lag++) {
         let s = 0;
         for (let i = 0; i + lag < HIST; i++) s += h[i] * h[i + lag];
-        s /= norm;
-        if (s > bestVal) { bestVal = s; bestLag = lag; }
+        ac[lag] = s / norm;
       }
-      if (bestLag > 0 && bestVal > 0.12) {
-        const bpm = 60 * fps / bestLag;
-        this.bpm = this.bpm ? this.bpm * 0.7 + bpm * 0.3 : bpm;
-        this.beatConf = Math.min(1, bestVal * 2.5);
-      } else {
+
+      // pick the beat lag, not just the strongest peak: a true beat also has
+      // energy at 2x/3x its period, and a gentle log-gaussian prior around
+      // 120 BPM breaks ties between a beat and its hi-hat subdivision
+      let bestLag = 0, bestScore = 0;
+      for (let lag = minLag; lag <= maxLag; lag++) {
+        let s = ac[lag];
+        if (2 * lag <= acN) s += 0.5 * ac[2 * lag];
+        if (3 * lag <= acN) s += 0.33 * ac[3 * lag];
+        const oct = Math.log2(60 * fps / lag / 120);
+        s *= Math.exp(-0.5 * (oct / 0.9) * (oct / 0.9));
+        if (s > bestScore) { bestScore = s; bestLag = lag; }
+      }
+      const peak = bestLag > 0 ? ac[bestLag] : 0;
+      // hysteresis: acquiring a lock needs a clear peak, holding one doesn't
+      if (!bestLag || peak < (this.bpm ? 0.07 : 0.12)) {
         this.beatConf *= 0.8;
-        if (this.beatConf < 0.05) this.bpm = 0;
+        if (this.beatConf < 0.05) {
+          this.bpm = 0;
+          this._bpmHist.length = 0;
+          this._bpmMiss = 0;
+        }
+        return;
+      }
+
+      // parabolic interpolation around the peak: sub-frame lag precision,
+      // otherwise BPM is quantized to ±4 at pop tempos
+      let lagF = bestLag;
+      if (bestLag > minLag && bestLag < acN) {
+        const a = ac[bestLag - 1], b = ac[bestLag], c = ac[bestLag + 1];
+        const d = a - 2 * b + c;
+        if (d < 0) lagF = bestLag + 0.5 * (a - c) / d;
+      }
+      const est = 60 * fps / lagF;
+      this.beatConf = Math.min(1, peak * 2.5);
+
+      // median of recent estimates + a locked value that only moves on
+      // sustained evidence — one bad estimate never jerks the BPM around
+      const recent = this._bpmHist;
+      recent.push(est);
+      if (recent.length > 5) recent.shift();
+      const med = recent.slice().sort((x, y) => x - y)[recent.length >> 1];
+      if (!this.bpm) {
+        if (recent.length >= 3) this.bpm = med;
+        return;
+      }
+      let cand = med; // fold double/half-tempo flips back onto the lock
+      if (cand > this.bpm * 1.7 && cand < this.bpm * 2.3) cand *= 0.5;
+      else if (cand > this.bpm * 0.43 && cand < this.bpm * 0.59) cand *= 2;
+      if (Math.abs(cand - this.bpm) < this.bpm * 0.08) {
+        this._bpmMiss = 0;
+        this.bpm += (cand - this.bpm) * 0.25;
+      } else if (++this._bpmMiss >= 4) { // ~2s of disagreement: real tempo change
+        this._bpmMiss = 0;
+        this.bpm = med;
       }
     }
 
