@@ -22,12 +22,13 @@ of the persistent "Sharing this tab" banner that `getDisplayMedia` forces on the
 web app (Chrome draws it even over fullscreen; it cannot be suppressed).
 
 ```sh
-./scripts/build-extension.sh   # assembles dist/extension from js/ + css/
+./scripts/build-extension.sh   # syncs the shared js/ + css/ into extension/
 ```
 
 Then `chrome://extensions` → enable Developer mode → **Load unpacked** →
-`dist/extension`. Open a tab that's playing audio and click the ORPHIC toolbar
-button. Note: `chrome.tabCapture` mutes the captured tab, so the visualizer tab
+`extension/`. After editing shared code, rerun the script and hit the
+extension's reload button. Open a tab that's playing audio and click the
+ORPHIC toolbar button. Note: `chrome.tabCapture` mutes the captured tab, so the visualizer tab
 takes over playback (its volume control now controls the music).
 
 ### Controls

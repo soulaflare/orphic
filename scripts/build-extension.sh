@@ -1,14 +1,12 @@
 #!/bin/sh
-# Assemble the Chrome extension into dist/extension/ for "Load unpacked"
-# or store packaging. Shared js/ and css/ are copied from the repo root
-# so the web app and extension stay one source of truth.
+# Sync the shared js/ and css/ from the repo root into extension/ so it is
+# directly loadable via chrome://extensions → "Load unpacked" → extension/.
+# Rerun after editing any shared code, then hit reload on the extension.
+# extension/js and extension/css are generated — edit the root copies.
 set -e
 cd "$(dirname "$0")/.."
 
-rm -rf dist/extension
-mkdir -p dist/extension
+rm -rf extension/js extension/css
+cp -R js css extension/
 
-cp -R js css dist/extension/
-cp extension/manifest.json extension/sw.js extension/tab-source.js extension/visualizer.html dist/extension/
-
-echo "Built dist/extension — load it via chrome://extensions → Load unpacked"
+echo "Synced extension/ — load (or reload) it via chrome://extensions"
