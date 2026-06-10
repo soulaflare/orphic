@@ -4,6 +4,9 @@
 export interface OrphicBridge {
   readonly isElectron: true
   readonly platform: NodeJS.Platform
+  /** Drive the OS media player. Resolves {ok:false, hint} when no player
+   * could be reached — surface the hint to the user. */
+  media(cmd: 'playpause' | 'next' | 'previous'): Promise<{ ok: boolean; hint?: string }>
 }
 
 declare global {

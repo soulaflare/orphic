@@ -5,9 +5,10 @@
  *   macOS    — CoreAudio process taps, macOS 14.2+ (default since Electron 39)
  *   Linux    — PulseAudio/PipeWire monitor source (feature-flagged below)
  */
-import { app, BrowserWindow, desktopCapturer, net, protocol, session } from 'electron'
+import { app, BrowserWindow, desktopCapturer, ipcMain, net, protocol, session } from 'electron'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { MEDIA_COMMANDS, sendMediaCommand, type MediaCommand, type MediaResult } from './media'
 
 const APP_SCHEME = 'orphic'
 const APP_ORIGIN = `${APP_SCHEME}://app`
@@ -21,6 +22,10 @@ const isSmokeTest = process.env.ORPHIC_SMOKE === '1'
 if (process.platform === 'linux') {
   app.commandLine.appendSwitch('enable-features', 'PulseaudioLoopbackForScreenShare')
 }
+
+// Never let Chromium claim the hardware media keys: ORPHIC only listens,
+// and play/next/previous must keep driving the user's real player.
+app.commandLine.appendSwitch('disable-features', 'HardwareMediaKeyHandling')
 
 // Registered before app ready so orphic:// behaves like a standard origin
 // (relative URL resolution, fetch, streaming media).
@@ -142,6 +147,13 @@ if (!isSmokeTest && !app.requestSingleInstanceLock()) {
       if (mainWindow.isMinimized()) mainWindow.restore()
       mainWindow.focus()
     }
+  })
+
+  // HUD transport buttons / j-k-l shortcuts → the OS media player
+  ipcMain.handle('media:command', (event, cmd: unknown): Promise<MediaResult> | MediaResult => {
+    if (!event.senderFrame?.url.startsWith(APP_ORIGIN)) return { ok: false }
+    if (typeof cmd !== 'string' || !MEDIA_COMMANDS.has(cmd)) return { ok: false }
+    return sendMediaCommand(cmd as MediaCommand)
   })
 
   void app.whenReady().then(() => {

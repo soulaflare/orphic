@@ -141,7 +141,6 @@ html, body {
 #hud > * { pointer-events: auto; }
 #hud.asleep { opacity: 0; }
 #hud.asleep > * { pointer-events: none; }
-#hud.hidden-hud { display: none; }
 
 .hud-group { display: flex; align-items: center; gap: 0.7rem; }
 
@@ -226,6 +225,24 @@ html, body {
   font-size: 1rem; line-height: 1;
 }
 #btn-stop:hover { color: #ff79c6; border-color: rgba(255, 121, 198, 0.5); }
+.hud-btn:active { transform: scale(0.9); }
+
+/* ---------- transport (desktop shell only) ----------
+ * Absolutely centered between the hud groups; on narrow windows it falls
+ * back into the flex flow so it can't collide with the scene pill. */
+#media-group {
+  position: absolute; left: 50%; top: 0.9rem;
+  transform: translateX(-50%);
+  gap: 0.45rem;
+}
+#media-group[hidden] { display: none; }
+#btn-play { width: 2.4rem; }
+#btn-play .ic-pause { display: none; }
+#btn-play.playing .ic-play { display: none; }
+#btn-play.playing .ic-pause { display: block; }
+@media (max-width: 880px) {
+  #media-group { position: static; transform: none; }
+}
 
 /* ---------- help bar (wakes and sleeps with the HUD) ---------- */
 #help-bar {
@@ -239,7 +256,6 @@ html, body {
   pointer-events: none;
 }
 #help-bar.asleep { opacity: 0; }
-#help-bar.hidden-hud { display: none; }
 #help-bar kbd {
   font-family: inherit;
   color: var(--fg);

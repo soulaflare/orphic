@@ -51,7 +51,9 @@ stream goes dead silently instead of erroring, electron/electron#49607).
 The HUD (wakes on mouse move): scene pill with pattern number + auto-cycle
 progress (click it for the full pattern panel), live BPM with a beat-pulsing
 dot, music/speech/ambient badge, auto-cycle toggle, fullscreen, and a stop
-button back to the landing screen.
+button back to the landing screen. In the desktop app a centered transport
+cluster (previous · play/pause · next) drives whatever the OS is playing —
+Spotify/Music on macOS, media keys on Windows, MPRIS on Linux.
 
 | key | action |
 |---|---|
@@ -62,7 +64,8 @@ button back to the landing screen.
 | `↑` `↓` | move up / down the pattern grid (panel open) |
 | `a` | toggle auto-cycle (switches pattern every ~45 s, on a beat) |
 | `f` / double-click | fullscreen |
-| `h` | hide the HUD entirely |
+| `k` | play / pause the system player (desktop app) |
+| `j` / `l` | previous / next track (desktop app) |
 | `esc` | close the panel — or, while playing, stop capture back to the landing |
 
 ## The sixteen patterns

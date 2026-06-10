@@ -28,6 +28,10 @@
       beatDot: document.getElementById('beat-dot'),
       systemBtn: document.getElementById('btn-system'),
       autoBtn: document.getElementById('btn-auto'),
+      mediaGroup: document.getElementById('media-group'),
+      prevBtn: document.getElementById('btn-prev'),
+      playBtn: document.getElementById('btn-play'),
+      nextBtn: document.getElementById('btn-next'),
       fsBtn: document.getElementById('btn-fs'),
       stopBtn: document.getElementById('btn-stop'),
       panel: document.getElementById('scene-panel'),
@@ -55,6 +59,42 @@
     }
     function hideToast() {
       ui.toast.classList.add('hidden');
+    }
+
+    // ---- system transport (desktop only) ----
+    // The buttons drive whatever player the OS is running — ORPHIC just
+    // visualizes it, so a web page has nothing to send these commands to.
+    const media = desktop && window.orphic.media ? window.orphic.media : null;
+    // No player API can tell us play/pause state across apps; infer it from
+    // the captured signal instead. A press flips the icon optimistically and
+    // holds it briefly so the dying/arriving audio can't fight the flip.
+    let mediaPlaying = false, mediaSilence = 0, mediaHold = 0, mediaToastTimer = 0;
+    function setPlayingUi(p) {
+      if (p === mediaPlaying) return;
+      mediaPlaying = p;
+      ui.playBtn.classList.toggle('playing', p);
+    }
+    function mediaSend(cmd) {
+      if (!media) return;
+      if (cmd === 'playpause') {
+        setPlayingUi(!mediaPlaying);
+        mediaHold = 1.6;
+        mediaSilence = mediaPlaying ? 0 : 99;
+      }
+      media(cmd).then(res => {
+        if (res && res.ok === false && res.hint) {
+          showToast(res.hint);
+          clearTimeout(mediaToastTimer);
+          mediaToastTimer = setTimeout(hideToast, 6000);
+        }
+      }).catch(() => {});
+    }
+    if (media) {
+      ui.mediaGroup.hidden = false;
+      for (const el of document.querySelectorAll('.desktop-only')) el.hidden = false;
+      ui.prevBtn.addEventListener('click', () => mediaSend('previous'));
+      ui.playBtn.addEventListener('click', () => mediaSend('playpause'));
+      ui.nextBtn.addEventListener('click', () => mediaSend('next'));
     }
 
     // visual test: index.html#shot-N[-SECS] → scene N with synthetic audio
@@ -348,6 +388,9 @@
         const cols = getComputedStyle(ui.sceneGrid).gridTemplateColumns.split(' ').length;
         setScene(targetIdx() + (e.key === 'ArrowDown' ? cols : -cols));
       }
+      else if (e.key === 'j' && media) mediaSend('previous');
+      else if (e.key === 'k' && media) mediaSend('playpause');
+      else if (e.key === 'l' && media) mediaSend('next');
       else if (e.key === 'a') ui.autoBtn.click();
       else if (e.key === 's') togglePanel();
       else if (e.key === 'Escape') {
@@ -356,10 +399,6 @@
         else if (!onLanding && !document.fullscreenElement) stopCapture();
       }
       else if (e.key === 'f') toggleFullscreen();
-      else if (e.key === 'h') {
-        ui.hud.classList.toggle('hidden-hud');
-        ui.helpBar.classList.toggle('hidden-hud');
-      }
     });
     function toggleFullscreen() {
       if (document.fullscreenElement) document.exitFullscreen();
@@ -382,6 +421,9 @@
       ui.hud.classList.remove('asleep');
       ui.helpBar.classList.remove('asleep');
       ui.panel.classList.remove('hidden');
+      // the transport is desktop-only — surface it in the design preview too
+      ui.mediaGroup.hidden = false;
+      for (const el of document.querySelectorAll('.desktop-only')) el.hidden = false;
     }
 
     // ---- idle attract mode ----
@@ -467,6 +509,16 @@
       const idle = engine.mode === 'none';
       if (idle) idleDrive(dt);
       audioTex.update();
+
+      // play/pause icon follows the captured signal (with hysteresis), once
+      // any post-press hold has expired
+      if (media && !idle) {
+        mediaHold -= dt;
+        if (mediaHold <= 0) {
+          mediaSilence = features.level > 0.02 ? 0 : mediaSilence + dt;
+          setPlayingUi(mediaSilence < 1.2);
+        }
+      }
 
       // HUD info (skip the DOM writes while the HUD is faded out)
       if (uiPreview) hudFade = 1;

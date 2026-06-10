@@ -28,6 +28,27 @@
         <span id="cycle-bar"></span>
       </button>
     </div>
+    <!-- transport for the OS player — desktop shell only (unhidden by main.js) -->
+    <div class="hud-group" id="media-group" hidden>
+      <button class="hud-btn hud-icon" id="btn-prev" title="previous track — j" aria-label="previous track">
+        <svg viewBox="0 0 16 16" width="13" height="13" fill="currentColor">
+          <path d="M3.2 2.8h1.8v10.4H3.2z"/><path d="M13.4 2.8 5.9 8l7.5 5.2z"/>
+        </svg>
+      </button>
+      <button class="hud-btn hud-icon" id="btn-play" title="play / pause — k" aria-label="play / pause">
+        <svg class="ic-play" viewBox="0 0 16 16" width="13" height="13" fill="currentColor">
+          <path d="M4.6 2.4 13.6 8l-9 5.6z"/>
+        </svg>
+        <svg class="ic-pause" viewBox="0 0 16 16" width="13" height="13" fill="currentColor">
+          <path d="M3.8 2.8h2.7v10.4H3.8zM9.5 2.8h2.7v10.4H9.5z"/>
+        </svg>
+      </button>
+      <button class="hud-btn hud-icon" id="btn-next" title="next track — l" aria-label="next track">
+        <svg viewBox="0 0 16 16" width="13" height="13" fill="currentColor">
+          <path d="M11 2.8h1.8v10.4H11z"/><path d="M2.6 2.8 10.1 8l-7.5 5.2z"/>
+        </svg>
+      </button>
+    </div>
     <div class="hud-group">
       <span class="badge" id="bpm-badge"><span id="beat-dot"></span><span id="bpm-text">·</span></span>
       <span class="badge mode-music" id="mode-badge">music</span>
@@ -45,9 +66,10 @@
     <span><kbd>s</kbd> patterns</span>
     <span><kbd>←</kbd><kbd>→</kbd> switch</span>
     <span><kbd>space</kbd> next</span>
+    <span class="desktop-only" hidden><kbd>k</kbd> play/pause</span>
+    <span class="desktop-only" hidden><kbd>j</kbd><kbd>l</kbd> track</span>
     <span><kbd>a</kbd> auto-cycle</span>
     <span><kbd>f</kbd> fullscreen</span>
-    <span><kbd>h</kbd> hide hud</span>
     <span><kbd>esc</kbd> stop</span>
   </div>
 
