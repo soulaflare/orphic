@@ -54,7 +54,7 @@
 
   const UPDATE_FRAG = M.FRAG_HEADER + M.GLSL_LIB + M.GLSL_AUDIO + M.GLSL_SPECTRUM + `
   uniform sampler2D uAgents, uField;
-  uniform float uAspect, uDt;
+  uniform float uAspect, uDt, uImpulse;
   uniform vec2 uRoost;
   uniform vec3 uPredator; // xy pos, z = active
 
@@ -78,7 +78,7 @@
 
     // the mix sets the flock's mood: mids = discipline, kick = burst apart
     float wAlign = 1.8 + uMid * 4.0;
-    float wCoh = 0.95 * (1.0 - uBassFast * 0.5);
+    float wCoh = 1.45 * (1.0 - uBassFast * 0.4);
     float wSep = 0.9 + uBassFast * 3.0 + uBurst * 4.0;
 
     vec2 acc = (avgVel - vel) * wAlign
@@ -88,7 +88,7 @@
     // wandering roost keeps the flock on screen; in a rest it reels the
     // birds into a tight, slowly coiling ball
     vec2 toR = uRoost - pos;
-    acc += toR * (0.16 + 0.6 * smoothstep(0.22, 0.5, length(toR)) + uQuiet * 0.5);
+    acc += toR * (0.26 + 0.85 * smoothstep(0.18, 0.45, length(toR)) + uQuiet * 0.5);
 
     // hawk strike: flee hard inside its radius
     if (uPredator.z > 0.5) {
@@ -104,9 +104,15 @@
 
     vel += acc * uDt;
 
-    // starlings never hover: clamp speed into a flying band (rests slow it)
+    // beat = a direct velocity kick outward, not a force: the whole cloud
+    // visibly pops apart and re-coheres in rhythm (forces are too slow —
+    // the flock low-passes them into invisibility)
+    vec2 fromR = pos - uRoost;
+    vel += fromR / max(length(fromR), 0.05) * uImpulse;
+
+    // starlings never hover: loudness sets the tempo of flight
     float spd = max(length(vel), 1e-5);
-    float vmax = (0.13 + uBass * 0.05 + uBeat * 0.03) * (1.0 - uQuiet * 0.45);
+    float vmax = (0.085 + uLevel * 0.16 + uBeat * 0.04) * (1.0 - uQuiet * 0.45);
     vel *= clamp(spd, 0.055, vmax) / spd;
 
     pos += vel * vec2(1.0 / uAspect, 1.0) * uDt;
@@ -202,6 +208,57 @@
     fragColor = vec4(vColor, a);
   }`;
 
+  // the hawk: one big point sprite carrying a procedural raptor silhouette
+  const HAWK_VERT = `#version 300 es
+  precision highp float;
+  uniform vec2 uPos;
+  uniform float uSize;
+  void main() {
+    gl_Position = vec4(uPos * 2.0 - 1.0, 0.0, 1.0);
+    gl_PointSize = uSize;
+  }`;
+  const HAWK_FRAG = `#version 300 es
+  precision highp float;
+  uniform float uAngle, uTime, uFlapHz, uFlapAmp, uAlpha, uGlow;
+  uniform vec3 uRimCol;
+  out vec4 fragColor;
+  float sdSeg(vec2 p, vec2 a, vec2 b) {
+    vec2 pa = p - a, ba = b - a;
+    float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
+    return length(pa - ba * h);
+  }
+  void main() {
+    vec2 q = (gl_PointCoord - 0.5) * 2.0;
+    q.y = -q.y; // point-coord y runs downward
+    float cs = cos(uAngle), sn = sin(uAngle);
+    q = mat2(cs, sn, -sn, cs) * q; // into hawk frame, +x = travel
+    // beating swept wings + body + fork tail; the kick powers the stroke
+    float flap = sin(uTime * uFlapHz);
+    float span = 0.42 + uFlapAmp * flap;
+    float wing1 = sdSeg(q, vec2(0.12, 0.0), vec2(-0.38,  span)) - 0.050;
+    float wing2 = sdSeg(q, vec2(0.12, 0.0), vec2(-0.38, -span)) - 0.050;
+    float body = sdSeg(q, vec2(0.52, 0.0), vec2(-0.30, 0.0)) - 0.070;
+    float tail = sdSeg(q, vec2(-0.28, 0.0), vec2(-0.52, 0.10 * flap)) - 0.040;
+    float d = min(min(wing1, wing2), min(body, tail));
+    // dark raptor core with a burning sun-lit rim
+    float core = smoothstep(0.025, -0.025, d);
+    float rim = smoothstep(0.11, 0.0, abs(d)) * (1.0 - core * 0.5);
+    vec3 col = mix(vec3(0.012, 0.010, 0.022), uRimCol * (0.8 + uGlow), rim);
+    float a = max(core, rim * 0.85) * uAlpha;
+    fragColor = vec4(col, a);
+  }`;
+
+  // glowing wake the hawk drags behind it
+  const TRAIL_FRAG = `#version 300 es
+  precision highp float;
+  uniform vec3 uCol;
+  uniform float uA;
+  out vec4 fragColor;
+  void main() {
+    float fall = smoothstep(0.5, 0.0, length(gl_PointCoord - 0.5));
+    fragColor = vec4(uCol * fall * fall * uA, 1.0);
+  }`;
+
   M.registerScene({
     name: 'murmuration · dusk flock',
     modes: ['music', 'ambient'],
@@ -214,9 +271,16 @@
       const pUpdate = glc.program(UPDATE_FRAG);
       const pSky = glc.program(SKY_FRAG);
       const pDraw = glc.program(DRAW_FRAG, DRAW_VERT);
+      const pHawk = glc.program(HAWK_FRAG, HAWK_VERT);
+      const pTrail = glc.program(TRAIL_FRAG, HAWK_VERT);
+      const trail = []; // fading wake samples
+      let trailTimer = 0;
       const vao = gl.createVertexArray();
       let keyHue = 0.08;
       const pred = { x: 0, y: 0, vx: 0, vy: 0, t: 0 };
+      // the roost leaps to a new spot on musical events; the flock chases it
+      const roost = { x: 0.5, y: 0.55, tx: 0.5, ty: 0.55, side: 1 };
+      let leapBeats = 0, leapLatch = 0;
 
       pInit.use().f('uSeed', Math.random() * 100);
       glc.draw(pInit, agents.read);
@@ -239,9 +303,51 @@
             const spd = 0.55 + Math.random() * 0.25;
             pred.vx = Math.cos(aim) * spd;
             pred.vy = Math.sin(aim) * spd;
-            pred.t = 1.4;
+            pred.t = 1.8;
           }
-          if (pred.t > 0) { pred.x += pred.vx * dt; pred.y += pred.vy * dt; }
+
+          // roost leaps every 2 beats (alternating sides of the sky), so the
+          // flock swoops in rhythm — bright music flies high, dark flies low
+          leapLatch -= dt;
+          if (f.beat > 0.9 && leapLatch <= 0) {
+            leapLatch = 0.25;
+            if (++leapBeats >= 2) {
+              leapBeats = 0;
+              roost.side = -roost.side;
+              roost.tx = 0.5 + roost.side * (0.13 + Math.random() * 0.13 + f.level * 0.06);
+              roost.ty = 0.32 + f.centroid * 0.35 + Math.random() * 0.12;
+            }
+          }
+          // gentle ambient wander when there is no beat to chase
+          if (f.beatConf < 0.15) {
+            roost.tx = 0.5 + Math.sin(f.phaseLevel * 0.11) * 0.16;
+            roost.ty = 0.55 + Math.sin(f.phaseLevel * 0.083 + 1.9) * 0.13;
+          }
+          const rk = 1 - Math.exp(-dt * 1.6);
+          roost.x += (roost.tx - roost.x) * rk;
+          roost.y += (roost.ty - roost.y) * rk;
+          const roostX0 = roost.x, roostY0 = roost.y;
+          if (pred.t > 0) {
+            // banked pursuit: curve toward the flock, dive speed on loudness
+            const ax = roostX0 - pred.x, ay = roostY0 - pred.y;
+            const al = Math.hypot(ax, ay) + 1e-4;
+            pred.vx += (ax / al) * dt * 0.45;
+            pred.vy += (ay / al) * dt * 0.45;
+            const sp = Math.hypot(pred.vx, pred.vy) + 1e-4;
+            const want = 0.50 + 0.40 * f.level;
+            pred.vx *= want / sp; pred.vy *= want / sp;
+            pred.x += pred.vx * dt; pred.y += pred.vy * dt;
+            trailTimer += dt;
+            if (trailTimer > 0.03) {
+              trailTimer = 0;
+              trail.push({ x: pred.x, y: pred.y, life: 1 });
+              if (trail.length > 16) trail.shift();
+            }
+          }
+          for (let i = trail.length - 1; i >= 0; i--) {
+            trail[i].life -= dt * 1.8;
+            if (trail[i].life <= 0) trail.splice(i, 1);
+          }
 
           // 1. splat the flock into the neighborhood field
           field.clear();
@@ -258,13 +364,18 @@
           gl.disable(gl.BLEND);
 
           // 2. steer + advance every bird
-          const roostX = 0.5 + Math.sin(f.phaseLevel * 0.11) * 0.16;
-          const roostY = 0.55 + Math.sin(f.phaseLevel * 0.083 + 1.9) * 0.13;
+          const roostX = roostX0, roostY = roostY0;
           pUpdate.use();
           M.audioUniforms(pUpdate, audio, t);
           M.spectrumUniforms(pUpdate, audio, 2);
+          // one-frame velocity kick on the beat's rising edge only
+          const beatNow = f.beat > 0.9;
+          const impulse = beatNow && !this._beatHeld ? 0.030 + f.bass * 0.035 : 0;
+          this._beatHeld = beatNow;
+
           pUpdate.f('uAspect', glc.width / glc.height)
                  .f('uDt', Math.min(dt, 0.033))
+                 .f('uImpulse', impulse)
                  .v2('uRoost', roostX, roostY)
                  .v3('uPredator', pred.x, pred.y, pred.t > 0 ? 1 : 0)
                  .tex('uAgents', agents.read.tex, 0)
@@ -289,6 +400,45 @@
           gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
           gl.bindVertexArray(vao);
           gl.drawArrays(gl.POINTS, 0, DIM * DIM);
+
+          // the hawk's glowing wake (additive), intensity riding the level
+          const f = audio.f;
+          const dpr = Math.min(window.devicePixelRatio || 1, 2);
+          const ember = [1.0, 0.55, 0.28];
+          if (trail.length) {
+            gl.blendFunc(gl.ONE, gl.ONE);
+            gl.useProgram(pTrail.handle);
+            pTrail._pendingTex.length = 0;
+            for (const s of trail) {
+              pTrail.v2('uPos', s.x, s.y)
+                    .f('uSize', (4 + s.life * 12) * dpr)
+                    .v3('uCol', ember[0], ember[1], ember[2])
+                    .f('uA', s.life * s.life * (0.10 + f.level * 0.30 + f.beat * 0.20));
+              pTrail._bindPending();
+              gl.drawArrays(gl.POINTS, 0, 1);
+            }
+            gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+          }
+
+          // the hawk itself: kick powers the wing stroke, beats flare the rim
+          if (pred.t > 0) {
+            const age = 1.8 - pred.t;
+            const alpha = Math.min(1, age / 0.15) * Math.min(1, pred.t / 0.3);
+            const aspect = glc.width / glc.height;
+            gl.useProgram(pHawk.handle);
+            pHawk._pendingTex.length = 0;
+            pHawk.v2('uPos', pred.x, pred.y)
+                 .f('uSize', (30 + f.bassFast * 14) * dpr)
+                 .f('uAngle', Math.atan2(pred.vy, pred.vx * aspect))
+                 .f('uTime', t)
+                 .f('uFlapHz', 8 + f.treble * 10)
+                 .f('uFlapAmp', 0.18 + f.bassFast * 0.34 + f.level * 0.10)
+                 .f('uGlow', f.beat * 1.4 + f.onset * 0.6)
+                 .v3('uRimCol', ember[0], ember[1], ember[2])
+                 .f('uAlpha', alpha * 0.95);
+            pHawk._bindPending();
+            gl.drawArrays(gl.POINTS, 0, 1);
+          }
           gl.disable(gl.BLEND);
         },
         dispose() {
