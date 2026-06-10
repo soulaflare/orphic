@@ -1,21 +1,31 @@
 /* ORPHIC scene — MURMURATION · dusk flock
- * 65k starlings over a dusk sky — dark silhouettes, not neon, so the scene
- * stands apart from the additive ones. Boids without neighbor lists: every
- * frame the flock splats velocity + density into a 128² field texture, and
- * each bird steers from that field (alignment = local mean velocity,
- * cohesion = up the coarse density gradient, separation = down the fine
- * gradient). O(n), no spatial hashing, weak-GPU friendly.
- * Audio owns the flock's mood: kicks flare separation so the cloud bursts
- * and regroups, mids tighten alignment (discipline of the formation),
- * onsets launch a hawk through the flock (real murmuration ripples), and
- * every bird is keyed to one spectrum slice — its band's energy agitates it,
- * so different frequencies shimmer through different parts of the cloud.
+ * 65k starlings over an aurora dusk. Boids without neighbor lists: every frame
+ * the flock splats velocity + density into a field texture, and each bird steers
+ * from that field — alignment (local mean velocity) and cohesion (up the coarse
+ * density gradient) form a density-INDEPENDENT cohesive backbone, the way real
+ * starlings stay whole through huge density swings by coupling to a fixed count
+ * of neighbours (Ballerini/STARFLAG, topological not metric). O(n), no spatial
+ * hashing, weak-GPU friendly.
+ *
+ * The murmuration LOOK comes from a curl-noise (divergence-free) turbulence
+ * field laid over the boids: it stretches the flock into rolling ribbons and
+ * sheets without ever tearing it apart, because curl flow preserves area.
+ *
+ * Audio drives ENERGY, never fragmentation: loudness sets flight tempo, level
+ * rides the curl amplitude (more turbulence), and beats radiate agitation waves
+ * — expanding rings of synchronised roll ("zig" manoeuvres) that sweep outward
+ * and read as dark bands, the real optical signature of a murmuration (the dark
+ * wave is an orientation effect, not a density effect — Hemelrijk/StarDisplay).
+ * Only the hawk, launched on occasional onsets, truly scatters the flock; it
+ * always re-coheres. Every bird is also keyed to one spectrum slice for shimmer.
  */
 (function () {
   'use strict';
   const M = window.ORPHIC;
-  const DIM = 256;        // 65,536 birds
-  const FIELD = 128;      // neighborhood field resolution
+  const DIM = 256;          // 65,536 birds
+  const FIELD = 128;        // neighborhood field resolution
+  const WAVE_SPEED = 1.15;  // agitation wave front speed (UV/s, faster than flock)
+  const MAX_WAVES = 4;
 
   const INIT_FRAG = M.FRAG_HEADER + M.GLSL_LIB + `
   uniform float uSeed;
@@ -52,9 +62,21 @@
     fragColor = vec4(vVel * w, w, 0.0);
   }`;
 
-  const UPDATE_FRAG = M.FRAG_HEADER + M.GLSL_LIB + M.GLSL_AUDIO + M.GLSL_SPECTRUM + `
+  // divergence-free curl-noise flow from a scrolling scalar potential. Because
+  // it has zero divergence it swirls the flock into ribbons/sheets without
+  // diverging it — coherent turbulence, the heart of the murmuration look.
+  const CURL_GLSL = `
+  float psi(vec2 p) { return vnoise(p) + 0.5 * vnoise(p * 2.1 + 7.3); }
+  vec2 curl(vec2 p) {
+    float e = 0.012;
+    float dy = psi(p + vec2(0.0, e)) - psi(p - vec2(0.0, e));
+    float dx = psi(p + vec2(e, 0.0)) - psi(p - vec2(e, 0.0));
+    return vec2(dy, -dx) / (2.0 * e);
+  }`;
+
+  const UPDATE_FRAG = M.FRAG_HEADER + M.GLSL_LIB + M.GLSL_AUDIO + M.GLSL_SPECTRUM + CURL_GLSL + `
   uniform sampler2D uAgents, uField;
-  uniform float uAspect, uDt, uImpulse;
+  uniform float uAspect, uDt;
   uniform vec2 uRoost;
   uniform vec3 uPredator; // xy pos, z = active
 
@@ -68,67 +90,74 @@
     vec2 avgVel = f.xy / max(dens, 0.5);
 
     // density gradients: coarse for cohesion, fine for separation
-    float rc = 3.0 / ${FIELD}.0, rf = 1.2 / ${FIELD}.0;
+    float rc = 3.0 / ${FIELD}.0, rf = 1.3 / ${FIELD}.0;
     vec2 gC = vec2(texture(uField, pos + vec2(rc, 0)).z - texture(uField, pos - vec2(rc, 0)).z,
                    texture(uField, pos + vec2(0, rc)).z - texture(uField, pos - vec2(0, rc)).z)
               / (dens + 2.0);
-    // milder density normalization than gC: full /(dens+2) made separation
-    // weakest exactly where it was needed most, so birds condensed into knots
     vec2 gF = vec2(texture(uField, pos + vec2(rf, 0)).z - texture(uField, pos - vec2(rf, 0)).z,
                    texture(uField, pos + vec2(0, rf)).z - texture(uField, pos - vec2(0, rf)).z)
               / (dens * 0.25 + 2.0);
 
-    // the mix sets the flock's mood: mids = discipline, kick = burst apart
-    float knotted = smoothstep(18.0, 32.0, dens); // only true knots, not filaments
-    float wAlign = 1.8 + uMid * 4.0;
-    float wCoh = 1.45 * (1.0 - uBassFast * 0.4) * (1.0 - 0.5 * knotted);
-    float wSep = 0.9 + uBassFast * 3.0 + uBurst * 4.0;
+    // Topological backbone: alignment + cohesion are CONSTANT and density-
+    // independent — never weakened by audio — and DOMINANT, so the flock stays
+    // one living body through every loud passage. Separation is a gentle
+    // constant that only bites in true clumps. (Audio used to quadruple
+    // separation and kick the cloud outward, which detonated it.)
+    // Topological backbone: alignment dominates (coherent, sheet-like motion);
+    // cohesion just keeps the body connected; separation gives the flock VOLUME
+    // so it fills a region instead of collapsing to a knot. All density-
+    // independent and never weakened by audio — the flock stays one living body
+    // through every loud passage. (Audio used to quadruple separation and kick
+    // the cloud outward, which detonated it.)
+    float wAlign = 2.6;
+    float wCoh   = 1.4;
+    float wSep   = 1.3;
 
     vec2 acc = (avgVel - vel) * wAlign
              + gC * wCoh
-             - gF * wSep * smoothstep(6.0, 24.0, dens); // only when truly packed
+             - gF * wSep * smoothstep(5.0, 20.0, dens);
 
-    // wandering roost keeps the flock on screen; in a rest it reels the
-    // birds into a tight, slowly coiling ball. Beyond the swirl radius an
-    // extra distance-independent homing term beelines stragglers back, so a
-    // split flock always re-merges instead of orbiting as two clumps.
+    // curl turbulence — the music's ENERGY: louder = more turbulent rolling
+    // motion; bass widens the swirls. Kept LOW-amplitude and small-eddy so it
+    // only ripples the surface and shears the interior — it must never be
+    // strong enough to pinch a sub-group off into a separate clump.
+    // Divergence-free, so it never diverges the flock.
+    float cScale = 4.5 - uBass * 1.0;
+    vec2 flow = curl(pos * cScale + vec2(uTime * 0.06, uTime * 0.04));
+    acc += flow * (0.16 + uLevel * 0.45 + uBeat * 0.20);
+
+    // roost = the GLOBAL binder. An always-on gentle spring to the single flock
+    // centre (field cohesion is only LOCAL, so without this the flock splits
+    // into separate clumps each pulled to its own centre). Separation keeps the
+    // spring from collapsing it to a knot, so it settles at a healthy radius;
+    // the steep outer ramp snaps any stray group back so it stays ONE body.
     vec2 toR = uRoost - pos;
     float farR = length(toR);
-    acc += toR * (0.26 + 0.85 * smoothstep(0.18, 0.45, farR) + uQuiet * 0.5)
-         + (toR / max(farR, 1e-4)) * 0.4 * smoothstep(0.30, 0.55, farR);
+    acc += toR * (0.7 + 2.4 * smoothstep(0.12, 0.40, farR) + uQuiet * 0.4);
 
-    // hawk strike: flee hard inside its radius
+    // hawk strike: the ONLY force that truly scatters the flock
     if (uPredator.z > 0.5) {
       vec2 d = pos - uPredator.xy;
       float dist = max(length(d), 1e-4);
       acc += d / dist * exp(-dist * dist * 60.0) * 5.0;
     }
 
-    // each bird is keyed to one spectrum slice — its band agitates it;
-    // the knotted term is diffusion pressure: gradients vanish at a clump's
-    // center, so only random agitation can loosen a condensed core
+    // faint per-bird shimmer keyed to its own spectrum slice — different
+    // frequencies sparkle through different parts of the cloud
     float bandE = specLog(h.x);
     vec2 jit = hash22(gl_FragCoord.xy + fract(uTime) * 317.0) - 0.5;
-    acc += jit * (bandE * (0.15 + uTreble * 0.9) * (1.0 - uQuiet) + knotted * 0.9);
+    acc += jit * (0.10 + bandE * 0.30 + uTreble * 0.30) * (1.0 - uQuiet * 0.5);
 
     vel += acc * uDt;
 
-    // beat = a direct velocity kick outward, not a force: the whole cloud
-    // visibly pops apart and re-coheres in rhythm (forces are too slow —
-    // the flock low-passes them into invisibility). Fades with distance:
-    // birds already flung wide must not be kicked further out every beat,
-    // or the kicks balance the roost pull and a split becomes permanent.
-    vec2 fromR = pos - uRoost;
-    float rr = length(fromR);
-    vel += fromR / max(rr, 0.05) * uImpulse * (1.0 - smoothstep(0.20, 0.55, rr));
-
-    // starlings never hover: loudness sets the tempo of flight
+    // starlings never hover: loudness sets the tempo of flight. Energy shows
+    // as faster, more turbulent flight — NOT as the cloud blowing apart.
     float spd = max(length(vel), 1e-5);
-    float vmax = (0.085 + uLevel * 0.16 + uBeat * 0.04) * (1.0 - uQuiet * 0.45);
-    vel *= clamp(spd, 0.055, vmax) / spd;
+    float vmax = (0.10 + uLevel * 0.22 + uBeat * 0.05) * (1.0 - uQuiet * 0.4);
+    vel *= clamp(spd, 0.05, vmax) / spd;
 
     pos += vel * vec2(1.0 / uAspect, 1.0) * uDt;
-    pos = clamp(pos, -0.02, 1.02);
+    pos = clamp(pos, -0.05, 1.05);
     fragColor = vec4(pos, vel);
   }`;
 
@@ -148,6 +177,18 @@
                 * 0.55;
     vec3 sky = mix(warm, deep, pow(y, 0.65));
 
+    // ---- aurora curtains drifting across the upper sky (the dynamism) ----
+    // a scrolling sheet broken into vertical rays, shimmering with the music
+    float aurMask = smoothstep(0.32, 0.95, y);
+    float warp = fbm3(vec2(vUV.x * 2.5 + uTime * 0.04, y * 1.2));
+    float sheet = smoothstep(0.42, 0.92, fbm3(vec2(vUV.x * 3.0 + uPhaseLevel * 0.04, y * 2.2 - uTime * 0.03)));
+    float rays  = 0.45 + 0.55 * sin(vUV.x * 46.0 + warp * 9.0 + uTime * 0.25);
+    float aur = aurMask * sheet * rays;
+    vec3 aurCol = mix(pal(uKeyHue + 0.30, vec3(0.45), vec3(0.45), vec3(1.0), vec3(0.0, 0.20, 0.45)),
+                      pal(uKeyHue + 0.72, vec3(0.40), vec3(0.45), vec3(1.0), vec3(0.10, 0.40, 0.80)),
+                      y);
+    sky += aurCol * aur * (0.10 + uLevel * 0.24 + uTreble * 0.20 + uBeat * 0.10);
+
     // low setting sun: warm core, amber halo, beat pulse
     vec2 sunP = vec2(0.5 + sin(uPhaseLevel * 0.05) * 0.22, 0.115);
     vec2 d = (vUV - sunP) * vec2(uRes.x / uRes.y, 1.35);
@@ -156,8 +197,8 @@
     sky += sunCol * (exp(-dd * 300.0) * (1.0 + uBeat * 0.35)
                      + exp(-dd * 22.0) * 0.30 + exp(-dd * 5.0) * 0.10);
 
-    // thin stratus bands near the horizon, warmed near the sun
-    float cl = smoothstep(0.45, 0.8, fbm3(vec2(vUV.x * 3.0 + uPhaseLevel * 0.01, y * 14.0)));
+    // thin stratus bands near the horizon, drifting, warmed near the sun
+    float cl = smoothstep(0.45, 0.8, fbm3(vec2(vUV.x * 3.0 + uPhaseLevel * 0.02, y * 14.0)));
     sky *= 1.0 - cl * 0.18 * (1.0 - y);
     sky += sunCol * cl * exp(-dd * 8.0) * 0.10;
 
@@ -185,30 +226,70 @@
     fragColor = vec4(aces(sky), 1.0);
   }`;
 
+  // each bird presents a roll-dependent wing area to the camera. Banking from
+  // the flow it rides + synchronised "zig" rolls from passing agitation waves
+  // turn the bird broadside, darkening and enlarging it — so a dark band sweeps
+  // outward through the flock. This is the real optical murmuration wave.
   const DRAW_VERT = `#version 300 es
   precision highp float;
   uniform sampler2D uAgents;
   uniform int uDim;
-  uniform float uTime, uPointScale;
+  uniform float uTime, uPointScale, uBass, uAspect, uLevel;
+  uniform float uWaves[${MAX_WAVES * 4}]; // x, y, radius, amp per wave
   out float vAlpha;
   out vec3 vColor;
+  float hash12(vec2 p) {
+    vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+    p3 += dot(p3, p3.yzx + 33.33);
+    return fract((p3.x + p3.y) * p3.z);
+  }
   vec2 hash22(vec2 p) {
     vec3 p3 = fract(vec3(p.xyx) * vec3(0.1031, 0.1030, 0.0973));
     p3 += dot(p3, p3.yzx + 33.33);
     return fract((p3.xx + p3.yz) * p3.zy);
   }
+  float vnoise(vec2 p) {
+    vec2 i = floor(p), fr = fract(p);
+    vec2 u = fr * fr * (3.0 - 2.0 * fr);
+    return mix(mix(hash12(i), hash12(i + vec2(1, 0)), u.x),
+               mix(hash12(i + vec2(0, 1)), hash12(i + vec2(1, 1)), u.x), u.y);
+  }
+  ${CURL_GLSL}
   void main() {
     ivec2 tc = ivec2(gl_VertexID % uDim, gl_VertexID / uDim);
     vec4 a = texelFetch(uAgents, tc, 0);
-    vec2 h = hash22(vec2(tc) * 1.7 + 3.1);
-    float depth = h.x; // pseudo-depth: distant birds smaller + hazier
+    vec2 pos = a.xy, vel = a.zw;
+    vec2 hh = hash22(vec2(tc) * 1.7 + 3.1);
+    float depth = hh.x; // pseudo-depth: distant birds smaller + hazier
+
+    // banking: roll proportional to how hard the bird is turning in the flow
+    vec2 fl = curl(pos * (5.0 - uBass * 1.2) + vec2(uTime * 0.06, uTime * 0.04));
+    vec2 vdir = normalize(vel + 1e-5);
+    float turn = fl.x * (-vdir.y) + fl.y * vdir.x; // flow component across heading
+    float bank = abs(tanh(turn * 0.55));
+
+    // agitation waves: expanding rings of synchronised roll → dark bands
+    float waveRoll = 0.0;
+    for (int i = 0; i < ${MAX_WAVES}; i++) {
+      float amp = uWaves[i * 4 + 3];
+      if (amp <= 0.0) continue;
+      vec2 o = vec2(uWaves[i * 4 + 0], uWaves[i * 4 + 1]);
+      float R = uWaves[i * 4 + 2];
+      float x = (length((pos - o) * vec2(uAspect, 1.0)) - R) / 0.055;
+      waveRoll += amp * exp(-x * x);
+    }
+
+    // broadside amount 0..1 — how much wing the bird shows the camera
+    float broad = clamp(bank * 0.7 + waveRoll, 0.0, 1.0);
+
     // wing-beat flicker
-    float wing = 0.78 + 0.32 * sin(uTime * (7.0 + h.y * 6.0) + h.y * 40.0);
-    gl_Position = vec4(a.xy * 2.0 - 1.0, 0.0, 1.0);
-    gl_PointSize = mix(1.8, 3.8, depth) * wing * uPointScale;
-    vAlpha = mix(0.65, 1.0, depth);
-    // silhouettes, faintly lifted by atmospheric haze when "far"
-    vColor = mix(vec3(0.20, 0.17, 0.26), vec3(0.010, 0.012, 0.028), depth);
+    float wing = 0.78 + 0.32 * sin(uTime * (7.0 + hh.y * 6.0) + hh.y * 40.0);
+    gl_Position = vec4(pos * 2.0 - 1.0, 0.0, 1.0);
+    gl_PointSize = mix(2.1, 4.0, depth) * wing * uPointScale * (0.72 + broad * 1.0);
+    vAlpha = mix(0.7, 1.0, depth) * (0.72 + broad * 0.42);
+    // silhouettes; broadside birds read darker (full wing), edge-on lift to haze
+    vec3 near = mix(vec3(0.17, 0.15, 0.23), vec3(0.015, 0.018, 0.035), broad);
+    vColor = mix(near, vec3(0.020, 0.026, 0.052), depth);
   }`;
   const DRAW_FRAG = `#version 300 es
   precision highp float;
@@ -251,10 +332,10 @@
     float wing2 = sdSeg(q, vec2(0.12, 0.0), vec2(-0.38, -span)) - 0.050;
     float body = sdSeg(q, vec2(0.52, 0.0), vec2(-0.30, 0.0)) - 0.070;
     float tail = sdSeg(q, vec2(-0.28, 0.0), vec2(-0.52, 0.10 * flap)) - 0.040;
-    float d = min(min(wing1, wing2), min(body, tail));
+    float dd = min(min(wing1, wing2), min(body, tail));
     // dark raptor core with a burning sun-lit rim
-    float core = smoothstep(0.025, -0.025, d);
-    float rim = smoothstep(0.11, 0.0, abs(d)) * (1.0 - core * 0.5);
+    float core = smoothstep(0.025, -0.025, dd);
+    float rim = smoothstep(0.11, 0.0, abs(dd)) * (1.0 - core * 0.5);
     vec3 col = mix(vec3(0.012, 0.010, 0.022), uRimCol * (0.8 + uGlow), rim);
     float a = max(core, rim * 0.85) * uAlpha;
     fragColor = vec4(col, a);
@@ -293,6 +374,14 @@
       // the roost leaps to a new spot on musical events; the flock chases it
       const roost = { x: 0.5, y: 0.55, tx: 0.5, ty: 0.55, side: 1 };
       let leapBeats = 0, leapLatch = 0;
+      // agitation waves: rendering-only rings of synchronised roll
+      const waves = [];
+      const waveBuf = new Float32Array(MAX_WAVES * 4);
+      let waveLatch = 0;
+      function spawnWave(x, y, t) {
+        waves.push({ x, y, t0: t });
+        if (waves.length > MAX_WAVES) waves.shift();
+      }
 
       pInit.use().f('uSeed', Math.random() * 100);
       glc.draw(pInit, agents.read);
@@ -316,28 +405,48 @@
             pred.vx = Math.cos(aim) * spd;
             pred.vy = Math.sin(aim) * spd;
             pred.t = 1.8;
+            spawnWave(pred.x, pred.y, t); // the flock's alarm ripples outward
           }
 
           // roost leaps every 2 beats (alternating sides of the sky), so the
-          // flock swoops in rhythm — bright music flies high, dark flies low
+          // flock swoops in rhythm — bright music flies high, dark flies low.
+          // Wider arcs than before so the compact flock sweeps through the
+          // negative space instead of sitting centred.
           leapLatch -= dt;
           if (f.beat > 0.9 && leapLatch <= 0) {
             leapLatch = 0.25;
             if (++leapBeats >= 2) {
               leapBeats = 0;
               roost.side = -roost.side;
-              roost.tx = 0.5 + roost.side * (0.13 + Math.random() * 0.13 + f.level * 0.06);
-              roost.ty = 0.32 + f.centroid * 0.35 + Math.random() * 0.12;
+              roost.tx = 0.5 + roost.side * (0.12 + Math.random() * 0.10 + f.level * 0.05);
+              roost.ty = 0.38 + f.centroid * 0.30 + Math.random() * 0.10;
             }
           }
           // gentle ambient wander when there is no beat to chase
           if (f.beatConf < 0.15) {
-            roost.tx = 0.5 + Math.sin(f.phaseLevel * 0.11) * 0.16;
-            roost.ty = 0.55 + Math.sin(f.phaseLevel * 0.083 + 1.9) * 0.13;
+            roost.tx = 0.5 + Math.sin(f.phaseLevel * 0.11) * 0.18;
+            roost.ty = 0.55 + Math.sin(f.phaseLevel * 0.083 + 1.9) * 0.14;
           }
           const rk = 1 - Math.exp(-dt * 1.6);
           roost.x += (roost.tx - roost.x) * rk;
           roost.y += (roost.ty - roost.y) * rk;
+
+          // beat rising edge radiates an agitation wave through the flock —
+          // a sweep of roll (dark band), NOT an outward shove. Throttled so
+          // the bands stay distinct.
+          const beatNow = f.beat > 0.9;
+          waveLatch -= dt;
+          if (beatNow && !this._beatHeld && f.level > 0.12 && waveLatch <= 0) {
+            spawnWave(roost.x, roost.y, t);
+            waveLatch = 0.30;
+          }
+          this._beatHeld = beatNow;
+
+          // age out spent waves
+          for (let i = waves.length - 1; i >= 0; i--) {
+            if ((t - waves[i].t0) * WAVE_SPEED > 1.5) waves.splice(i, 1);
+          }
+
           const roostX0 = roost.x, roostY0 = roost.y;
           if (pred.t > 0) {
             // banked pursuit: curve toward the flock, dive speed on loudness
@@ -376,19 +485,12 @@
           gl.disable(gl.BLEND);
 
           // 2. steer + advance every bird
-          const roostX = roostX0, roostY = roostY0;
           pUpdate.use();
           M.audioUniforms(pUpdate, audio, t);
           M.spectrumUniforms(pUpdate, audio, 2);
-          // one-frame velocity kick on the beat's rising edge only
-          const beatNow = f.beat > 0.9;
-          const impulse = beatNow && !this._beatHeld ? 0.030 + f.bass * 0.035 : 0;
-          this._beatHeld = beatNow;
-
           pUpdate.f('uAspect', glc.width / glc.height)
                  .f('uDt', Math.min(dt, 0.033))
-                 .f('uImpulse', impulse)
-                 .v2('uRoost', roostX, roostY)
+                 .v2('uRoost', roostX0, roostY0)
                  .v3('uPredator', pred.x, pred.y, pred.t > 0 ? 1 : 0)
                  .tex('uAgents', agents.read.tex, 0)
                  .tex('uField', field.tex, 1);
@@ -400,12 +502,27 @@
           M.audioUniforms(pSky, audio, t);
           glc.draw(pSky, out);
 
+          // pack current agitation-wave fronts for the draw shader
+          waveBuf.fill(0);
+          for (let i = 0; i < waves.length && i < MAX_WAVES; i++) {
+            const r = (t - waves[i].t0) * WAVE_SPEED;
+            const amp = Math.max(0, 1 - r / 1.3); // damping: roll fades with distance
+            waveBuf[i * 4] = waves[i].x;
+            waveBuf[i * 4 + 1] = waves[i].y;
+            waveBuf[i * 4 + 2] = r;
+            waveBuf[i * 4 + 3] = amp;
+          }
+
+          const f = audio.f;
           gl.bindFramebuffer(gl.FRAMEBUFFER, null);
           gl.viewport(0, 0, glc.width, glc.height);
           gl.useProgram(pDraw.handle);
           pDraw._pendingTex.length = 0;
           pDraw.i('uDim', DIM).f('uTime', t)
                .f('uPointScale', Math.min(window.devicePixelRatio || 1, 2))
+               .f('uBass', f.bass).f('uLevel', f.level)
+               .f('uAspect', glc.width / glc.height)
+               .fv('uWaves', waveBuf)
                .tex('uAgents', agents.read.tex, 0);
           pDraw._bindPending();
           gl.enable(gl.BLEND);
@@ -414,7 +531,6 @@
           gl.drawArrays(gl.POINTS, 0, DIM * DIM);
 
           // the hawk's glowing wake (additive), intensity riding the level
-          const f = audio.f;
           const dpr = Math.min(window.devicePixelRatio || 1, 2);
           const ember = [1.0, 0.55, 0.28];
           if (trail.length) {
