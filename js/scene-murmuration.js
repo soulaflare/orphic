@@ -72,23 +72,30 @@
     vec2 gC = vec2(texture(uField, pos + vec2(rc, 0)).z - texture(uField, pos - vec2(rc, 0)).z,
                    texture(uField, pos + vec2(0, rc)).z - texture(uField, pos - vec2(0, rc)).z)
               / (dens + 2.0);
+    // milder density normalization than gC: full /(dens+2) made separation
+    // weakest exactly where it was needed most, so birds condensed into knots
     vec2 gF = vec2(texture(uField, pos + vec2(rf, 0)).z - texture(uField, pos - vec2(rf, 0)).z,
                    texture(uField, pos + vec2(0, rf)).z - texture(uField, pos - vec2(0, rf)).z)
-              / (dens + 2.0);
+              / (dens * 0.25 + 2.0);
 
     // the mix sets the flock's mood: mids = discipline, kick = burst apart
+    float knotted = smoothstep(18.0, 32.0, dens); // only true knots, not filaments
     float wAlign = 1.8 + uMid * 4.0;
-    float wCoh = 1.45 * (1.0 - uBassFast * 0.4);
+    float wCoh = 1.45 * (1.0 - uBassFast * 0.4) * (1.0 - 0.5 * knotted);
     float wSep = 0.9 + uBassFast * 3.0 + uBurst * 4.0;
 
     vec2 acc = (avgVel - vel) * wAlign
              + gC * wCoh
-             - gF * wSep * smoothstep(6.0, 30.0, dens); // only when truly packed
+             - gF * wSep * smoothstep(6.0, 24.0, dens); // only when truly packed
 
     // wandering roost keeps the flock on screen; in a rest it reels the
-    // birds into a tight, slowly coiling ball
+    // birds into a tight, slowly coiling ball. Beyond the swirl radius an
+    // extra distance-independent homing term beelines stragglers back, so a
+    // split flock always re-merges instead of orbiting as two clumps.
     vec2 toR = uRoost - pos;
-    acc += toR * (0.26 + 0.85 * smoothstep(0.18, 0.45, length(toR)) + uQuiet * 0.5);
+    float farR = length(toR);
+    acc += toR * (0.26 + 0.85 * smoothstep(0.18, 0.45, farR) + uQuiet * 0.5)
+         + (toR / max(farR, 1e-4)) * 0.4 * smoothstep(0.30, 0.55, farR);
 
     // hawk strike: flee hard inside its radius
     if (uPredator.z > 0.5) {
@@ -97,18 +104,23 @@
       acc += d / dist * exp(-dist * dist * 60.0) * 5.0;
     }
 
-    // each bird is keyed to one spectrum slice — its band agitates it
+    // each bird is keyed to one spectrum slice — its band agitates it;
+    // the knotted term is diffusion pressure: gradients vanish at a clump's
+    // center, so only random agitation can loosen a condensed core
     float bandE = specLog(h.x);
     vec2 jit = hash22(gl_FragCoord.xy + fract(uTime) * 317.0) - 0.5;
-    acc += jit * bandE * (0.15 + uTreble * 0.9) * (1.0 - uQuiet);
+    acc += jit * (bandE * (0.15 + uTreble * 0.9) * (1.0 - uQuiet) + knotted * 0.9);
 
     vel += acc * uDt;
 
     // beat = a direct velocity kick outward, not a force: the whole cloud
     // visibly pops apart and re-coheres in rhythm (forces are too slow —
-    // the flock low-passes them into invisibility)
+    // the flock low-passes them into invisibility). Fades with distance:
+    // birds already flung wide must not be kicked further out every beat,
+    // or the kicks balance the roost pull and a split becomes permanent.
     vec2 fromR = pos - uRoost;
-    vel += fromR / max(length(fromR), 0.05) * uImpulse;
+    float rr = length(fromR);
+    vel += fromR / max(rr, 0.05) * uImpulse * (1.0 - smoothstep(0.20, 0.55, rr));
 
     // starlings never hover: loudness sets the tempo of flight
     float spd = max(length(vel), 1e-5);
