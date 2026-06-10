@@ -24,12 +24,17 @@
   uniform sampler2D uTarget;
   uniform vec3 uColor;
   uniform vec2 uPoint;
-  uniform float uRadius, uAspect;
+  uniform float uRadius, uAspect, uCap;
   void main() {
     vec2 p = vUV - uPoint;
     p.x *= uAspect;
-    vec3 base = texture(uTarget, vUV).xyz;
-    fragColor = vec4(base + uColor * exp(-dot(p, p) / uRadius), 1.0);
+    vec3 c = texture(uTarget, vUV).xyz + uColor * exp(-dot(p, p) / uRadius);
+    // dye only (uCap=1): limit the max channel while preserving the ratios,
+    // so stacked splats saturate toward their hue instead of clipping to
+    // white paste. Velocity splats (uCap=0) must stay unclamped.
+    float m = max(c.r, max(c.g, c.b));
+    if (uCap > 0.5 && m > 1.0) c /= m;
+    fragColor = vec4(c, 1.0);
   }`;
 
   const CURL = H + `
@@ -122,7 +127,7 @@
         grad: glc.program(GRADIENT), show: glc.program(SHOW),
       };
       let vel = null, dye = null, curlT = null, divT = null, press = null;
-      let beatCount = 0, emitterAng = 0;
+      let beatCount = 0, emitterAng = 0, primed = false;
 
       function alloc(w, h) {
         const sw = Math.max(2, w >> 2), sh = Math.max(2, h >> 2);
@@ -141,23 +146,36 @@
         const aspect = vel.read.w / vel.read.h;
         progs.splat.use()
           .v2('uPoint', x, y).f('uRadius', radius).f('uAspect', aspect)
-          .v3('uColor', dx, dy, 0)
+          .v3('uColor', dx, dy, 0).f('uCap', 0)
           .tex('uTarget', vel.read.tex, 0);
         glc.draw(progs.splat, vel.write); vel.swap();
         progs.splat.use()
           .v2('uPoint', x, y).f('uRadius', radius).f('uAspect', aspect)
-          .v3('uColor', color[0], color[1], color[2])
+          .v3('uColor', color[0], color[1], color[2]).f('uCap', 1)
           .tex('uTarget', dye.read.tex, 0);
         glc.draw(progs.splat, dye.write); dye.swap();
       }
 
       return {
-        resize(w, h) { alloc(w, h); },
+        resize(w, h) { alloc(w, h); primed = false; },
         update(dt, audio, t) {
           if (!vel) return;
           const f = audio.f;
           const sdt = Math.min(dt, 1 / 40);
           const sTexel = [1 / vel.read.w, 1 / vel.read.h];
+
+          if (!primed) {
+            // open with ink already swirling — an empty dish takes ~10s of
+            // beats to fill and reads as a black screen
+            primed = true;
+            for (let i = 0; i < 6; i++) {
+              const a = (i / 6) * Math.PI * 2 + Math.random();
+              const px = 0.5 + Math.cos(a) * (0.12 + Math.random() * 0.15);
+              const py = 0.5 + Math.sin(a) * (0.12 + Math.random() * 0.15);
+              doSplat(px, py, Math.cos(a) * 260, Math.sin(a) * 260,
+                      hsv((i / 6 + Math.random() * 0.08) % 1, 0.85, 0.55), 0.008);
+            }
+          }
 
           // ---- audio-driven forcing ----
           if (f.burst === 1) {
@@ -174,13 +192,16 @@
             beatCount++;
             const n = 5;
             const hue = (beatCount * 0.13 + f.centroid * 0.3) % 1;
+            // the ring breathes across beats so ink reaches the whole frame,
+            // not one orbit — successive beats paint different territory
+            const ring = 0.12 + 0.12 * Math.sin(beatCount * 0.53);
             for (let i = 0; i < n; i++) {
               const a = (i / n) * Math.PI * 2 + beatCount * 0.7;
               const c = hsv((hue + i * 0.055) % 1, 0.85, 0.6 + f.bass * 0.4);
               // offset from centre: a pure radial burst at one point is all
               // divergence and the pressure solve would erase it
-              const ox = 0.5 + Math.cos(a) * 0.16, oy = 0.5 + Math.sin(a) * 0.16;
-              doSplat(ox, oy, Math.cos(a) * 380 * (0.4 + f.bass), Math.sin(a) * 380 * (0.4 + f.bass), c, 0.0028 + f.bass * 0.003);
+              const ox = 0.5 + Math.cos(a) * ring, oy = 0.5 + Math.sin(a) * ring;
+              doSplat(ox, oy, Math.cos(a) * 380 * (0.4 + f.bass), Math.sin(a) * 380 * (0.4 + f.bass), c, 0.005 + f.bass * 0.005);
             }
           }
           if (f.onset > 0.9 && f.beat <= 0.9) {
@@ -200,7 +221,7 @@
                 : 0.5 + Math.sin(a) * 0.27;
               const hue = (t * 0.02 + e * 0.45 + f.centroid * 0.25) % 1;
               const c = hsv(hue, 0.8, 0.10 + f.level * 0.35);
-              doSplat(px, py, -Math.sin(a) * 250 * f.level, Math.cos(a) * 250 * f.level, c, 0.0012);
+              doSplat(px, py, -Math.sin(a) * 250 * f.level, Math.cos(a) * 250 * f.level, c, 0.0018);
             }
           }
 
@@ -230,7 +251,9 @@
           glc.draw(progs.advect, vel.write); vel.swap();
 
           progs.advect.use().v2('uTexel', sTexel[0], sTexel[1])
-            .f('uDt', sdt).f('uDissipation', 0.988 - f.flux * 0.006 - f.quiet * 0.012)
+            // dye half-life ~2s: ink should linger and billow between beats
+            // (0.988 emptied the frame in ~1s), while rests still clear it
+            .f('uDt', sdt).f('uDissipation', 0.994 - f.flux * 0.004 - f.quiet * 0.015)
             .tex('uVelocity', vel.read.tex, 0).tex('uSource', dye.read.tex, 1);
           glc.draw(progs.advect, dye.write); dye.swap();
         },

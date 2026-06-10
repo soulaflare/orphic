@@ -101,7 +101,11 @@
         f.phaseLevel += dt * 0.8; f.phaseBass += dt; f.phaseTreble += dt;
         f.harmonic = 0.5 + 0.3 * Math.sin(st * 1.3);
         f.percussive = f.bassFast;
-        f.quiet = 0; f.burst = f.beat;
+        // burst marks music returning after a rest — rare (~once per scene
+        // cycle). Firing it every beat floods burst-reactive scenes (fluid,
+        // lenia, nebula) with detonations no real song produces, and a 10s
+        // cadence aliases with the 10s SHOT T capture grid.
+        f.quiet = 0; f.burst = (frames % 2700 === 900) ? 1 : 0;
         for (let c = 0; c < 12; c++) f.chroma[c] = 0.5 + 0.5 * Math.sin(st * 0.9 + c * 2.1);
         // synthetic spectrum/waveform so per-frequency scenes have content
         const fd = engine.freqData, td = engine.timeData;

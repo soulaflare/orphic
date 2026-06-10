@@ -36,8 +36,11 @@
             + w2 * (0.25 + uMid * 0.9)
             + w3 * (0.18 + uTreble * 0.8);
 
-    // glowing nodal lines + interference shading between them
-    float line = exp(-abs(w) * (9.0 - uLevel * 4.0));
+    // glowing nodal lines + interference shading between them. Keep the
+    // exponent high even when loud: low mode pairs already flatten |w|
+    // across the plate, and a soft exponent there turns the whole frame
+    // into washed-out glow instead of a nodal web
+    float line = exp(-abs(w) * (11.0 - uLevel * 3.0));
     float fill = 0.5 + 0.5 * sin(w * 2.2);
 
     float hue = uCentroid * 0.5 + uPhaseLevel * 0.015 + length(uv) * 0.06;
@@ -52,7 +55,9 @@
 
     float d = length(vUV - 0.5);
     col *= 1.0 - d * d * 1.1;
-    col *= 0.55 + uLevel * 0.9;
+    // milder than the line width's own level response — boosting both at
+    // once is what blew the plate out to white on loud passages
+    col *= 0.55 + uLevel * 0.65;
     col *= 1.0 - uQuiet * 0.5;   // rests: the plate goes still and dark
     col *= 1.0 + uBurst * 0.7;   // the re-strike flashes it awake
     fragColor = vec4(aces(col), 1.0);
