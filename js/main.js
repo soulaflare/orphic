@@ -200,6 +200,10 @@
       return;
     }
 
+    // luminous mote cursor — created after the shot/test early-returns so
+    // captures never include it; fed from the render loop further down
+    const cursor = M.createCursor ? M.createCursor() : null;
+
     let active = null, activeIdx = -1;
     let pendingIdx = -1; // switch requested mid-transition — applied when it lands
     const trans = new M.Transition(glc);
@@ -327,6 +331,11 @@
       ui.panel.classList.toggle('hidden', !want);
     }
     ui.scenePill.addEventListener('click', e => { e.stopPropagation(); togglePanel(); });
+    // right-click anywhere browses patterns — no OS context menu in a stage app
+    window.addEventListener('contextmenu', e => {
+      e.preventDefault();
+      togglePanel();
+    });
     window.addEventListener('click', e => {
       if (!ui.panel.classList.contains('hidden') && !ui.panel.contains(e.target)) togglePanel(false);
     });
@@ -509,6 +518,8 @@
       const idle = engine.mode === 'none';
       if (idle) idleDrive(dt);
       audioTex.update();
+      // on the landing screen the idle groove breathes through the cursor too
+      if (cursor) cursor.frame(dt, features, classifier.mode);
 
       // play/pause icon follows the captured signal (with hysteresis), once
       // any post-press hold has expired

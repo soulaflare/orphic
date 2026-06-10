@@ -22,7 +22,7 @@
   <div id="hud" class="asleep">
     <div class="hud-group">
       <span id="brand">ORPHIC</span>
-      <button id="scene-pill" title="all patterns — s">
+      <button id="scene-pill" title="all patterns — s or right-click">
         <span id="scene-num">01<i>/16</i></span>
         <span id="scene-name"></span>
         <span id="cycle-bar"></span>
@@ -65,7 +65,7 @@
   <div id="help-bar" class="asleep">
     <div class="help-group">
       <span class="help-label">patterns</span>
-      <span><kbd>s</kbd> browse</span>
+      <span><kbd>s</kbd><kbd>right-click</kbd> browse</span>
       <span><kbd>←</kbd><kbd>→</kbd> switch</span>
       <span><kbd>space</kbd> next</span>
       <span><kbd>a</kbd> auto-cycle</span>
@@ -102,6 +102,7 @@
   <script src="js/audio-engine.js"></script>
   <script src="js/features.js"></script>
   <script src="js/classifier.js"></script>
+  <script src="js/cursor.js"></script>
   <!-- pattern scenes (each self-registers; order = number-key order) -->
   <script src="js/scene-utils.js"></script>
   <script src="js/audio-textures.js"></script><!-- needs scene-utils' GLSL chunks -->

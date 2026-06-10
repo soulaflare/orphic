@@ -347,6 +347,93 @@ html, body {
   padding: 0.08rem 0.36rem; border-radius: 4px; margin-right: 0.28rem;
 }
 
+/* ---------- cursor ----------
+ * js/cursor.js replaces the OS arrow with a luminous mote + trailing halo.
+ * The native cursor is hidden only once that module takes over (fine
+ * pointers); the cursor: default/pointer rules above remain the fallback. */
+.orphic-cursor, .orphic-cursor * { cursor: none !important; }
+
+#cursor {
+  position: fixed; inset: 0;
+  z-index: 60; /* above everything, including the landing overlay */
+  pointer-events: none;
+  transition: opacity 0.45s ease;
+}
+#cursor.gone { opacity: 0; }
+
+/* dark rims under the glow keep both readable over hot, bright scenes */
+#cursor-dot {
+  position: absolute; left: 0; top: 0;
+  width: 6px; height: 6px; margin: -3px 0 0 -3px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow:
+    0 0 0 1.5px rgba(3, 2, 8, 0.5),
+    0 0 7px rgba(139, 233, 253, 0.95),
+    0 0 18px rgba(139, 233, 253, 0.45);
+  will-change: transform;
+}
+
+#cursor-halo {
+  position: absolute; left: 0; top: 0;
+  width: 36px; height: 36px; margin: -18px 0 0 -18px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(139, 233, 253, 0.55);
+  box-shadow:
+    0 0 0 1px rgba(3, 2, 8, 0.4),
+    0 0 0 1px rgba(3, 2, 8, 0.4) inset;
+  will-change: transform;
+}
+#cursor.mode-speech #cursor-halo { border-color: rgba(255, 121, 198, 0.4); }
+#cursor.hot #cursor-halo { border-color: transparent; }
+
+/* over clickables the rim becomes the brand gradient and slowly turns —
+   conic fill masked down to the rim so only the ring paints */
+#cursor-halo::before {
+  content: '';
+  position: absolute; inset: -1px;
+  border-radius: 50%;
+  background: conic-gradient(#8be9fd, #bd93f9, #ff79c6, #8be9fd);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2.5px), #000 calc(100% - 1.5px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 2.5px), #000 calc(100% - 1.5px));
+  opacity: 0;
+  transition: opacity 0.22s ease;
+}
+#cursor.hot #cursor-halo::before {
+  opacity: 1;
+  animation: cursor-spin 3.2s linear infinite;
+}
+@keyframes cursor-spin { to { transform: rotate(360deg); } }
+
+/* audio glow — JS writes opacity only, so the pulse is compositor-cheap */
+#cursor-glow {
+  position: absolute; inset: -9px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(139, 233, 253, 0.22), transparent 68%);
+  opacity: 0.3;
+}
+#cursor.mode-speech #cursor-glow {
+  background: radial-gradient(circle, rgba(255, 121, 198, 0.22), transparent 68%);
+}
+
+#cursor-ripple {
+  position: absolute;
+  width: 44px; height: 44px; margin: -22px 0 0 -22px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(139, 233, 253, 0.75);
+  opacity: 0;
+}
+#cursor-ripple.live { animation: cursor-ripple 0.5s cubic-bezier(0.16, 1, 0.3, 1); }
+@keyframes cursor-ripple {
+  from { transform: scale(0.3); opacity: 0.9; }
+  to   { transform: scale(1.6); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #cursor-halo::before { animation: none; }
+  #cursor-ripple.live { animation: none; }
+}
+
 /* ---------- toast ---------- */
 #toast {
   position: fixed; bottom: 3.4rem; left: 50%; transform: translateX(-50%);
