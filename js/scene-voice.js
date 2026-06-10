@@ -23,62 +23,106 @@
     return mix(a, b, fract(i));
   }
 
-  float ribbon(float y, float center, float halfW, float soft) {
-    float d = abs(y - center);
-    return exp(-pow(d / max(halfW, 1e-4), 2.0) * soft);
+  float ribbon(float y, float center, float halfW) {
+    float d = (y - center) / max(halfW, 1e-4);
+    return exp(-d * d);
+  }
+
+  // soft round ember/star field; drift moves cells upward over time
+  float embers(vec2 uv, float aspect, float scale, float drift, float density, float seed) {
+    vec2 g = (uv * vec2(aspect, 1.0) + vec2(0.0, -uTime * drift)) * scale;
+    vec2 id = floor(g);
+    float acc = 0.0;
+    for (int oy = -1; oy <= 1; oy++)
+    for (int ox = -1; ox <= 1; ox++) {
+      vec2 cid = id + vec2(ox, oy);
+      vec2 h = hash22(cid + seed);
+      if (h.x > density) continue;
+      vec2 p = cid + 0.5 + (h - 0.5) * 0.8;
+      float d = length(g - p);
+      float tw = 0.55 + 0.45 * sin(uTime * (2.0 + h.y * 4.0) + h.x * 40.0);
+      acc += exp(-d * d * 9.0) * tw;
+    }
+    return acc;
   }
 
   void main() {
     vec2 uv = vUV;
-    vec4 h = hist(uv.x);
-    // small neighbourhood average → arcs, not jitter
-    vec4 hs = (hist(max(uv.x - 0.008, 0.0)) + h + hist(min(uv.x + 0.008, 1.0))) / 3.0;
+    float aspect = uRes.x / uRes.y;
+    vec4 h0 = hist(uv.x);
+    // wide neighbourhood average → smooth arcs, not jitter
+    vec4 hs = (hist(uv.x - 0.016) + hist(uv.x - 0.008) + h0
+             + hist(uv.x + 0.008) + hist(uv.x + 0.016)) / 5.0;
 
-    float pitchY = 0.28 + hs.x * 0.5;
+    float pitchY = 0.30 + hs.x * 0.45;
     float voiced = hs.y;
     float loud = hs.z;
     float age = 1.0 - uv.x;                 // 0 = now, 1 = oldest
-    float fade = exp(-age * 2.2);
-
-    vec3 col = vec3(0.0);
-
-    // -- main pitch ribbon --
-    float w = 0.006 + loud * 0.05;
-    float core = ribbon(uv.y, pitchY, w, 1.0) * voiced;
-    float halo = ribbon(uv.y, pitchY, w * 4.0, 1.0) * voiced * 0.25;
+    float fade = exp(-age * 1.8);
     float hue = 0.62 - hs.x * 0.45 + uSpeech * 0.05;
     vec3 ribCol = pal(hue, vec3(0.55), vec3(0.45), vec3(1.0), vec3(0.0, 0.33, 0.67));
-    col += ribCol * (core * 1.6 + halo) * fade * (0.4 + loud * 1.6);
 
-    // -- aurora curtains: energy hanging beneath the contour --
-    float curtain = smoothstep(pitchY, pitchY - 0.45 * (0.3 + loud), uv.y)
-                  * smoothstep(pitchY - 0.5, pitchY, uv.y);
-    float flicker = fbm(vec2(uv.x * 7.0, uv.y * 3.0 - uTime * 0.4));
-    col += ribCol * curtain * flicker * voiced * fade * 0.30;
+    // ---- deep-space background: gradient + domain-warped nebula ----
+    vec3 col = mix(vec3(0.012, 0.010, 0.032), vec3(0.030, 0.016, 0.055), uv.y);
+    vec2 q = vec2(fbm(uv * vec2(aspect, 1.0) * 2.6 + uTime * 0.015),
+                  fbm(uv * vec2(aspect, 1.0) * 2.6 - uTime * 0.020 + 7.3));
+    float neb = fbm(uv * vec2(aspect * 1.6, 2.8) + q * 0.9);
+    col += pal(hue + 0.45 + neb * 0.18, vec3(0.5), vec3(0.4), vec3(1.0), vec3(0.0, 0.3, 0.6))
+           * neb * neb * (0.10 + uLevel * 0.10);
 
-    // -- treble shadow ribbon (consonant energy, sibilance) --
-    float trebY = 0.82;
-    float trebRib = ribbon(uv.y, trebY + sin(uv.x * 21.0 + uTime) * 0.015, 0.004 + hs.w * 0.03, 1.4);
+    // ---- starfield, two depths, gentle twinkle ----
+    col += vec3(0.85, 0.9, 1.0) * embers(uv, aspect, 42.0, 0.0, 0.06, 3.1) * 0.10;
+    col += vec3(0.95, 0.9, 1.0) * embers(uv, aspect, 21.0, 0.0, 0.04, 9.7) * 0.16;
+
+    // ---- aurora curtains hanging beneath the contour ----
+    float below = pitchY - uv.y;
+    if (below > 0.0 && voiced > 0.01) {
+      float streaks = fbm(vec2(uv.x * 9.0, uv.y * 1.6 - uTime * 0.22));
+      streaks = streaks * streaks * 1.6;
+      float falloff = exp(-below * (5.5 - loud * 2.0));
+      col += ribCol * streaks * falloff * voiced * fade * 0.45;
+    }
+
+    // ---- pitch ribbon: filament core + halo + harmonic echoes ----
+    float w = 0.0045 + loud * 0.030;
+    // pitch axis is log-scaled, so harmonics sit at fixed offsets above f0
+    const float OCT = 0.45 / 3.644;
+    float fil = 0.90 + 0.10 * sin(uv.x * 340.0 + uTime * 1.7 + hs.x * 30.0);
+    float core = ribbon(uv.y, pitchY, w) * fil;
+    float halo = ribbon(uv.y, pitchY, w * 5.0) * 0.22;
+    float harm2 = ribbon(uv.y, pitchY + OCT, w * 0.7) * 0.34 * fil;
+    float harm3 = ribbon(uv.y, pitchY + OCT * 1.585, w * 0.55) * 0.16;
+    col += ribCol * (core * 1.7 + halo) * voiced * fade * (0.45 + loud * 1.6);
+    col += pal(hue - 0.07, vec3(0.55), vec3(0.45), vec3(1.0), vec3(0.0, 0.33, 0.67))
+           * harm2 * voiced * fade * (0.4 + loud * 1.2);
+    col += pal(hue - 0.13, vec3(0.55), vec3(0.45), vec3(1.0), vec3(0.0, 0.33, 0.67))
+           * harm3 * voiced * fade * (0.4 + loud);
+    // hot white centre line
+    col += vec3(1.0, 0.97, 0.92) * ribbon(uv.y, pitchY, w * 0.35) * voiced * fade * loud * 0.9;
+
+    // ---- sibilance shimmer: thin noisy thread up top ----
+    float ty = 0.84 + (fbm(vec2(uv.x * 14.0, uTime * 0.6)) - 0.5) * 0.05;
+    float trebRib = ribbon(uv.y, ty, 0.004 + hs.w * 0.018)
+                  * (0.88 + 0.12 * sin(uv.x * 160.0 - uTime * 2.0));
     col += pal(hue + 0.4, vec3(0.5), vec3(0.4), vec3(1.0), vec3(0.0, 0.33, 0.67))
            * trebRib * hs.w * fade * 1.1;
 
-    // -- waterline echo near the bottom --
-    float refl = ribbon(uv.y, 0.10, w * 2.0, 1.0);
-    col += ribCol * refl * voiced * fade * 0.12 * (1.0 + sin(uv.x * 90.0 + uTime * 3.0) * 0.3);
+    // ---- consonant embers: soft motes rising off the fresh edge ----
+    float emb = embers(uv, aspect, 26.0, 0.045, 0.30, 1.7);
+    float edgeBias = smoothstep(0.35, 1.0, uv.x);
+    col += pal(hue + 0.08, vec3(0.6), vec3(0.4), vec3(1.0), vec3(0.0, 0.33, 0.67))
+           * emb * edgeBias * (uTreble * 0.9 + uOnset * 1.4 + 0.06) * 0.6;
 
-    // -- consonant sparks near the leading edge --
-    vec2 cell = floor(vec2(uv.x * 90.0, uv.y * 50.0));
-    float spark = step(0.985 - uOnset * 0.012, hash12(cell + floor(uTime * 20.0)));
-    col += vec3(1.0, 0.95, 0.8) * spark * uOnset * smoothstep(0.6, 1.0, uv.x) * 0.8;
-
-    // -- breathing background --
-    float d = length(uv - vec2(0.72, 0.45));
-    col += pal(hue + 0.52, vec3(0.06), vec3(0.05), vec3(1.0), vec3(0.0, 0.3, 0.6))
-           * (1.0 - d) * (0.25 + uLevel * 0.5);
+    // ---- leading-edge bloom where the voice is being born ----
+    float lead = exp(-pow((uv.x - 1.0) / 0.10, 2.0)) * voiced;
+    col += ribCol * lead * ribbon(uv.y, pitchY, w * 9.0) * loud * 0.55;
 
     float vd = length(uv - 0.5);
-    col *= 1.0 - vd * vd * 0.8;
-    fragColor = vec4(aces(col), 1.0);
+    col *= 1.0 - vd * vd * 0.7;
+    col = aces(col);
+    // dither — kills banding in the dark gradients ("low-res" look)
+    col += (hash12(uv * uRes + fract(uTime) * 311.0) - 0.5) * (3.0 / 255.0);
+    fragColor = vec4(col, 1.0);
   }`;
 
   M.registerScene({
