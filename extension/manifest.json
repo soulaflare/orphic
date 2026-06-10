@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "MYTHOS — audio-reactive visualizer",
+  "version": "1.0.0",
+  "description": "One-click generative visuals for whatever this tab is playing — Spotify, YouTube, anything.",
+  "permissions": ["tabCapture"],
+  "action": {
+    "default_title": "Visualize this tab's audio"
+  },
+  "background": {
+    "service_worker": "sw.js"
+  }
+}

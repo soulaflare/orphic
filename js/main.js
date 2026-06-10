@@ -151,7 +151,8 @@
       if (e.target.files[0]) startFile(e.target.files[0]);
     });
     ui.micBtn.addEventListener('click', startMic);
-    ui.systemBtn.addEventListener('click', startSystem);
+    // absent in the extension build (capture starts from the toolbar instead)
+    if (ui.systemBtn) ui.systemBtn.addEventListener('click', startSystem);
     ui.autoBtn.addEventListener('click', () => {
       autoCycle = !autoCycle;
       ui.autoBtn.classList.toggle('on', autoCycle);
@@ -191,6 +192,19 @@
       ui.sourceName.textContent = '';
       ui.overlay.classList.remove('hidden');
     };
+
+    // extension build: tab-source.js stashes a chrome.tabCapture stream ID
+    // before this script runs — start visualizing it immediately, no picker
+    if (M.pendingTabStreamId) {
+      const id = M.pendingTabStreamId;
+      M.pendingTabStreamId = null;
+      engine.useTabStream(id).then(() => {
+        ui.overlay.classList.add('hidden');
+        ui.sourceName.textContent = 'tab audio';
+      }).catch(err => {
+        alert('Tab capture failed: ' + err.message);
+      });
+    }
 
     // drag & drop anywhere
     window.addEventListener('dragover', e => { e.preventDefault(); document.body.classList.add('dragging'); });
