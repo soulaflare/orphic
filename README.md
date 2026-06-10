@@ -1,10 +1,12 @@
 # ORPHIC — audio-reactive generative visualizer
 
 Sixteen GPU pattern simulations that react live to **music (MP3/WAV/OGG/M4A)**, your
-**microphone**, or **another tab's audio** (Spotify, YouTube, …), with automatic
-speech-vs-music detection that re-tunes the visuals for voice.
+**microphone**, or **system / tab audio** (Spotify, YouTube, …), with automatic
+speech-vs-music detection that re-tunes the visuals for voice. Runs two ways:
+as a zero-dependency web page, or as a desktop app (Electron) that captures
+**everything playing on the machine** natively.
 
-## Run it
+## Run it — web
 
 Just open `index.html` in Chrome, Edge, Firefox or Safari (double-click works —
 no server, no build, no dependencies). Then:
@@ -14,6 +16,38 @@ no server, no build, no dependencies). Then:
 - **capture spotify / tab audio** — Chrome & Edge only: share a tab and tick
   "Share tab audio" in the picker (Firefox/Safari never return tab audio; there,
   route audio through a virtual device like BlackHole and use the mic source)
+
+## Run it — desktop (Electron)
+
+The desktop shell captures true whole-system audio with no picker, no virtual
+drivers and no extra dependencies, via Chromium's OS loopback capture
+(`setDisplayMediaRequestHandler` + `audio: 'loopback'`):
+
+| platform | backend | requirement |
+|---|---|---|
+| Windows | WASAPI loopback | none |
+| macOS | CoreAudio process taps | macOS 14.2+; one-time "System Audio Recording" consent |
+| Linux | PulseAudio / PipeWire monitor | `pipewire-pulse` or PulseAudio (feature flag set automatically) |
+
+```sh
+npm install
+npm run dev          # develop (renderer is static — reload with Cmd/Ctrl+R)
+npm run test:smoke   # build + run the all-scenes self-test inside Electron
+npm run dist:mac     # package (also: dist:win, dist:linux)
+```
+
+The same `js/` + `css/` + `index.html` power both targets — the renderer
+feature-checks `window.orphic` (exposed by the preload bridge) to decide
+between native loopback and the browser tab-share picker. The TypeScript
+main/preload processes live in `src/`, built by electron-vite; packaging is
+electron-builder (`electron-builder.yml`, hardened with Electron fuses, the
+renderer served over a CSP'd custom `orphic://` scheme, sandbox + context
+isolation on).
+
+macOS note: if capture starts but stays silent, the one-time system-audio
+consent was declined — re-enable it in System Settings → Privacy & Security
+(the app shows a hint when this happens, a known Chromium behavior where the
+stream goes dead silently instead of erroring, electron/electron#49607).
 
 ### Controls
 

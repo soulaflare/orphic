@@ -1,0 +1,28 @@
+{
+  "name": "orphic",
+  "productName": "ORPHIC",
+  "version": "0.1.0",
+  "description": "ORPHIC — audio-reactive generative visualizer",
+  "private": true,
+  "main": "./out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test:smoke": "electron-vite build && ORPHIC_SMOKE=1 electron .",
+    "dist:mac": "electron-vite build && electron-builder --mac",
+    "dist:win": "electron-vite build && electron-builder --win",
+    "dist:linux": "electron-vite build && electron-builder --linux"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.1",
+    "electron": "^42.4.0",
+    "electron-builder": "^26.15.2",
+    "electron-vite": "^5.0.0",
+    "eslint": "^10.4.1",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.61.0",
+    "vite": "^7.3.5"
+  }
+}

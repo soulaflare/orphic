@@ -1,0 +1,45 @@
+# ORPHIC — packaging (electron-builder)
+appId: com.orphic.visualizer
+productName: ORPHIC
+directories:
+  output: release
+files:
+  - out/**
+  - index.html
+  - css/**
+  - js/**
+asar: true
+
+# Harden the packaged binary (https://www.electronjs.org/docs/latest/tutorial/fuses)
+electronFuses:
+  runAsNode: false
+  enableCookieEncryption: true
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  enableEmbeddedAsarIntegrityValidation: true
+  onlyLoadAppFromAsar: true
+  grantFileProtocolExtraPrivileges: false
+
+mac:
+  category: public.app-category.music
+  darkModeSupport: true
+  target:
+    - dmg
+    - zip
+  extendInfo:
+    # Without this key macOS delivers a permanently-silent loopback stream
+    # instead of an error (electron/electron#49607).
+    NSAudioCaptureUsageDescription: >-
+      ORPHIC visualizes the audio playing on this Mac. macOS asks once for
+      permission to record system audio.
+    NSMicrophoneUsageDescription: >-
+      ORPHIC can visualize live sound from your microphone.
+
+win:
+  target: nsis
+
+linux:
+  target:
+    - AppImage
+  category: AudioVideo
+  synopsis: Audio-reactive generative visualizer

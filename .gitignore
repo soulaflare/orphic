@@ -1,2 +1,6 @@
 dist/
 .DS_Store
+node_modules/
+out/
+release/
+.claude/settings.local.json

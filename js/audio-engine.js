@@ -22,6 +22,9 @@
       this.binHz = 0;
       this.onSourceChange = null;   // callback(mode, label)
       this.onSourceEnd = null;      // callback() — system capture stopped externally
+      this.onCaptureSilent = null;  // callback() — capture running but never any signal
+      this.onCaptureSound = null;   // callback() — first signal after onCaptureSilent
+      this._silenceTimer = null;
     }
 
     _ensureContext() {
@@ -36,6 +39,10 @@
     }
 
     _disconnectSource() {
+      if (this._silenceTimer) {
+        clearInterval(this._silenceTimer);
+        this._silenceTimer = null;
+      }
       if (this.sourceNode) {
         try { this.sourceNode.disconnect(); } catch (e) {}
         this.sourceNode = null;
@@ -98,14 +105,21 @@
       if (this.onSourceChange) this.onSourceChange(this.mode, 'microphone');
     }
 
-    /** Capture tab audio via screen-share (Chrome/Edge only — Firefox and
-     *  Safari return no audio tracks from getDisplayMedia). */
+    /** Capture system / tab audio via getDisplayMedia.
+     *  Desktop app: the Electron main process answers with the OS loopback
+     *  device (WASAPI / CoreAudio taps / PulseAudio monitor) — whole-system
+     *  audio, no picker.
+     *  Browser: screen-share picker; tab audio on Chrome/Edge only. */
     async useSystemAudio() {
       this._ensureContext();
+      const desktop = !!(window.orphic && window.orphic.isElectron);
 
       // ask BEFORE tearing down the current source, so a cancelled picker
       // leaves the current playback untouched
-      const stream = await navigator.mediaDevices.getDisplayMedia({
+      const stream = await navigator.mediaDevices.getDisplayMedia(desktop ? {
+        video: true, // a video track is mandatory in the API; stopped below
+        audio: true, // the display-media handler swaps in loopback audio
+      } : {
         video: true, // a video track is mandatory; stopped below
         audio: {
           echoCancellation: false,
@@ -119,7 +133,9 @@
       });
       if (!stream.getAudioTracks().length) {
         stream.getTracks().forEach(t => t.stop());
-        throw new Error('no audio was shared — use Chrome or Edge, share a tab, and tick "Share tab audio" in the picker');
+        throw new Error(desktop
+          ? 'system audio capture returned no audio track'
+          : 'no audio was shared — use Chrome or Edge, share a tab, and tick "Share tab audio" in the picker');
       }
 
       this._disconnectSource();
@@ -138,7 +154,38 @@
       stream.getAudioTracks()[0].addEventListener('ended', () => {
         if (this.mode === 'system' && this.onSourceEnd) this.onSourceEnd();
       });
-      if (this.onSourceChange) this.onSourceChange(this.mode, 'tab audio');
+      if (desktop && window.orphic.platform === 'darwin') this._watchForSilentCapture();
+      if (this.onSourceChange) this.onSourceChange(this.mode, desktop ? 'system audio' : 'tab audio');
+    }
+
+    /** macOS quirk: when the app lacks the "System Audio Recording" consent,
+     *  Chromium delivers a stream that stays silent forever instead of
+     *  raising an error (electron/electron#49607). Silence is also what an
+     *  idle music player produces, so only hint — never block. */
+    _watchForSilentCapture() {
+      if (this._silenceTimer) clearInterval(this._silenceTimer);
+      const startedAt = performance.now();
+      let warned = false;
+      this._silenceTimer = setInterval(() => {
+        if (this.mode !== 'system') {
+          clearInterval(this._silenceTimer);
+          this._silenceTimer = null;
+          return;
+        }
+        let peak = 0;
+        for (let i = 0; i < this.timeData.length; i++) {
+          const a = Math.abs(this.timeData[i]);
+          if (a > peak) peak = a;
+        }
+        if (peak > 1e-6) {
+          clearInterval(this._silenceTimer);
+          this._silenceTimer = null;
+          if (warned && this.onCaptureSound) this.onCaptureSound();
+        } else if (!warned && performance.now() - startedAt > 6000) {
+          warned = true;
+          if (this.onCaptureSilent) this.onCaptureSilent();
+        }
+      }, 500);
     }
 
     togglePlayback() {

@@ -29,7 +29,30 @@
       fileInput: document.getElementById('file-input'),
       autoBtn: document.getElementById('btn-auto'),
       helpBar: document.getElementById('help-bar'),
+      toast: document.getElementById('toast'),
     };
+
+    // Desktop shell (Electron): system audio is captured natively from the
+    // OS — reword the capture button, which is browser-tab-specific otherwise.
+    const desktop = !!(window.orphic && window.orphic.isElectron);
+    if (desktop) {
+      const subs = {
+        darwin: 'everything playing on this mac — first use asks permission',
+        win32: 'everything playing on this pc',
+        linux: 'everything playing — pipewire / pulseaudio',
+      };
+      ui.systemBtn.childNodes[0].textContent = 'capture system audio';
+      ui.systemBtn.querySelector('.sub').textContent =
+        subs[window.orphic.platform] || 'everything playing on this device';
+    }
+
+    function showToast(msg) {
+      ui.toast.textContent = msg;
+      ui.toast.classList.remove('hidden');
+    }
+    function hideToast() {
+      ui.toast.classList.add('hidden');
+    }
 
     // visual test: index.html#shot-N → scene N with synthetic audio, for screenshots
     const shotMatch = location.hash.match(/^#shot-(\d+)$/);
@@ -202,17 +225,24 @@
       try {
         await engine.useSystemAudio();
         ui.overlay.classList.add('hidden');
-        ui.sourceName.textContent = 'tab audio';
+        ui.sourceName.textContent = desktop ? 'system audio' : 'tab audio';
       } catch (err) {
         if (err.name === 'NotAllowedError') return; // user cancelled the picker
-        alert('Tab audio unavailable: ' + err.message);
+        alert((desktop ? 'System audio unavailable: ' : 'Tab audio unavailable: ') + err.message);
       }
     }
     engine.onSourceEnd = () => {
       // "Stop sharing" pressed in the browser UI — back to the source picker
       ui.sourceName.textContent = '';
+      hideToast();
       ui.overlay.classList.remove('hidden');
     };
+    engine.onCaptureSilent = () => {
+      showToast(desktop && window.orphic.platform === 'darwin'
+        ? 'no sound detected — play something; if it stays silent, allow “System Audio Recording” for ORPHIC in System Settings → Privacy & Security, then retry'
+        : 'no sound detected yet — play something');
+    };
+    engine.onCaptureSound = hideToast;
 
     // drag & drop anywhere
     window.addEventListener('dragover', e => { e.preventDefault(); document.body.classList.add('dragging'); });
