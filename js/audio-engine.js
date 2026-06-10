@@ -141,41 +141,6 @@
       if (this.onSourceChange) this.onSourceChange(this.mode, 'tab audio');
     }
 
-    /** Consume a chrome.tabCapture stream ID (extension build only).
-     *  Unlike getDisplayMedia, tabCapture mutes the captured tab's own
-     *  playback, so we must route the audio to the speakers ourselves. */
-    async useTabStream(streamId) {
-      this._ensureContext();
-      // the mandatory/chromeMediaSource shape is Chrome's only documented
-      // bridge for tabCapture stream IDs; it cannot carry modern constraint
-      // keys, so voice processing is switched off via applyConstraints below
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          mandatory: {
-            chromeMediaSource: 'tab',
-            chromeMediaSourceId: streamId,
-          },
-        },
-      });
-      await stream.getAudioTracks()[0].applyConstraints({
-        echoCancellation: false,
-        noiseSuppression: false,
-        autoGainControl: false,
-      });
-
-      this._disconnectSource();
-      this.micStream = stream; // reuse the mic teardown path
-      this.sourceNode = this.ctx.createMediaStreamSource(stream);
-      this.sourceNode.connect(this.analyser);
-      this.analyser.connect(this.ctx.destination); // we are the playback now
-      this._analyserToSpeakers = true;
-      this.mode = 'system';
-      stream.getAudioTracks()[0].addEventListener('ended', () => {
-        if (this.mode === 'system' && this.onSourceEnd) this.onSourceEnd();
-      });
-      if (this.onSourceChange) this.onSourceChange(this.mode, 'tab audio');
-    }
-
     togglePlayback() {
       if (this.mode !== 'file' || !this.mediaEl) return;
       if (this.mediaEl.paused) this.mediaEl.play();

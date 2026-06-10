@@ -15,22 +15,6 @@ no server, no build, no dependencies). Then:
   "Share tab audio" in the picker (Firefox/Safari never return tab audio; there,
   route audio through a virtual device like BlackHole and use the mic source)
 
-## Chrome extension
-
-The extension captures a tab with one toolbar click — no share picker, and none
-of the persistent "Sharing this tab" banner that `getDisplayMedia` forces on the
-web app (Chrome draws it even over fullscreen; it cannot be suppressed).
-
-```sh
-./scripts/build-extension.sh   # syncs the shared js/ + css/ into extension/
-```
-
-Then `chrome://extensions` → enable Developer mode → **Load unpacked** →
-`extension/`. After editing shared code, rerun the script and hit the
-extension's reload button. Open a tab that's playing audio and click the
-ORPHIC toolbar button. Note: `chrome.tabCapture` mutes the captured tab, so the visualizer tab
-takes over playback (its volume control now controls the music).
-
 ### Controls
 
 | key | action |
