@@ -2,9 +2,12 @@
  * Jeff Jones (2010) slime-mold transport-network model, GPU edition.
  * 262k agents in a float texture; three competing species deposit into
  * R/G/B trail channels and prefer their own pheromone, weaving interlocked
- * vascular webs. Audio: bass drives agent speed, spectral centroid widens
- * the sensor fan (more branching), onsets scatter headings, beats pull the
- * swarm toward the centre.
+ * vascular webs. Each species' physiology is owned by one frequency band:
+ * the bass species is slow and heavy with long-range sensors (fat roads),
+ * the mid species is balanced, the treble species fast and fine-grained
+ * (filigree). A species only thrives — moves, deposits, holds territory —
+ * while its band is playing, so the mix decides who wins the petri dish.
+ * Onsets scatter mainly the treble species; beats pull mainly the bass one.
  */
 (function () {
   'use strict';
@@ -37,11 +40,18 @@
 
     vec3 mask = species < 0.5 ? vec3(1, 0, 0) : species < 1.5 ? vec3(0, 1, 0) : vec3(0, 0, 1);
 
-    // audio-modulated Jones parameters
-    float sa = 0.30 + uCentroid * 0.55 + uSpeech * 0.25;   // sensor angle (rad)
-    float sd = (0.006 + uMid * 0.012);                      // sensor distance (uv)
-    float turn = 0.22 + uFlux * 2.2;                        // turn rate (rad/step)
-    float speed = (0.0022 + uBassFast * 0.0035 + uLevel * 0.0010);
+    // band-per-species Jones parameters: each species' physiology is driven
+    // by its own band — bass = slow + heavy + long sensors, treble = fast +
+    // fine. A species only really lives while its band is playing.
+    float band = species < 0.5 ? uBass : species < 1.5 ? uMid : uTreble;
+    float kick = species < 0.5 ? uBassFast : band;
+    float sa = (species < 0.5 ? 0.26 : species < 1.5 ? 0.36 : 0.52)
+             + uCentroid * 0.35 + uSpeech * 0.25;            // sensor angle (rad)
+    float sd = (species < 0.5 ? 0.011 : species < 1.5 ? 0.007 : 0.0045)
+             * (0.7 + band * 0.8);                           // sensor distance (uv)
+    float turn = 0.22 + uFlux * 2.2;                         // turn rate (rad/step)
+    float speed = (species < 0.5 ? 0.0018 : species < 1.5 ? 0.0024 : 0.0030)
+                * (0.50 + kick * 1.7) + uLevel * 0.0006;
 
     vec2 sscale = vec2(1.0 / uAspect, 1.0);
     vec2 dirF = vec2(cos(heading), sin(heading));
@@ -66,16 +76,16 @@
     // gentle wander
     heading += (rnd.y - 0.5) * 0.15;
 
-    // onsets: a fraction of agents scatter explosively
-    if (uOnset > 0.85 && rnd.x < 0.10 + uOnset * 0.08) {
+    // onsets (transients = high-frequency events) scatter mainly the treble
+    // species; beats (the kick) pull mainly the bass species centre-ward
+    if (uOnset > 0.85 && rnd.x < (species > 1.5 ? 0.16 : 0.04) + uOnset * 0.08) {
       heading += (rnd.y - 0.5) * 6.28318;
     }
-    // beats: pull toward centre — the web breathes with the kick
     if (uBeat > 0.05) {
       vec2 toC = vec2(0.5) - pos;
       float want = atan(toC.y, toC.x);
       float d = mod(want - heading + 3.14159, 6.28318) - 3.14159;
-      heading += d * uBeat * 0.09;
+      heading += d * uBeat * (species < 0.5 ? 0.14 : species < 1.5 ? 0.06 : 0.025);
     }
 
     pos += vec2(cos(heading), sin(heading)) * speed * sscale * (uDt * 60.0);
@@ -102,9 +112,10 @@
   flat in float vSpecies;
   out vec4 fragColor;
   uniform float uDeposit;
+  uniform vec3 uBands; // (bass, mid, treble): a silent band's species fades out
   void main() {
     vec3 c = vSpecies < 0.5 ? vec3(1, 0, 0) : vSpecies < 1.5 ? vec3(0, 1, 0) : vec3(0, 0, 1);
-    fragColor = vec4(c * uDeposit, 0.0);
+    fragColor = vec4(c * uDeposit * (0.35 + 1.3 * dot(c, uBands)), 0.0);
   }`;
 
   const DIFFUSE_FRAG = M.FRAG_HEADER + `
@@ -188,6 +199,7 @@
           pDeposit._pendingTex.length = 0;
           pDeposit.i('uDim', DIM)
                   .f('uDeposit', 0.020 + audio.f.level * 0.035)
+                  .v3('uBands', audio.f.bass, audio.f.mid, audio.f.treble)
                   .tex('uAgents', agents.read.tex, 0);
           pDeposit._bindPending();
           gl.enable(gl.BLEND);

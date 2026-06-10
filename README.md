@@ -1,6 +1,6 @@
 # ORPHIC — audio-reactive generative visualizer
 
-Thirteen GPU pattern simulations that react live to **music (MP3/WAV/OGG/M4A)**, your
+Fourteen GPU pattern simulations that react live to **music (MP3/WAV/OGG/M4A)**, your
 **microphone**, or **another tab's audio** (Spotify, YouTube, …), with automatic
 speech-vs-music detection that re-tunes the visuals for voice.
 
@@ -26,11 +26,11 @@ no server, no build, no dependencies). Then:
 | `f` / double-click | fullscreen |
 | `h` | hide the HUD entirely |
 
-## The thirteen patterns
+## The fourteen patterns
 
 | # | scene | system | reacts how |
 |---|---|---|---|
-| 1 | **physarum · living network** | Jeff Jones (2010) slime-mold agents, 262k on GPU, 3 competing species | bass → speed, centroid → branching, onsets scatter, beats pull the web inward |
+| 1 | **physarum · living network** | Jeff Jones (2010) slime-mold agents, 262k on GPU, 3 competing species | band-per-species: bass species is slow/heavy with long sensors, mid balanced, treble fast filigree — each only thrives while its band plays, so the mix decides territory; onsets scatter the treble species, beats pull the bass one inward |
 | 2 | **ink nebula · stable fluids** | Jos Stam (1999) fluids + vorticity confinement | beats fire ink-jet rings, onsets side jets, treble adds swirl, speech rides pitch |
 | 3 | **turing bloom · reaction-diffusion** | Gray-Scott (Pearson 1993), drifts between mitosis/worms/coral regimes | bass → feed rate, centroid → kill rate, beats stamp seeds on a golden-angle ring |
 | 4 | **star river · curl-noise flow** | Bridson (2007) divergence-free curl noise, 262k particles | centroid → turbulence scale, bass → flow speed, onsets detonate respawn rings |
@@ -42,7 +42,8 @@ no server, no build, no dependencies). Then:
 | 10 | **spectral canyon · spectrogram terrain** | raymarched heightfield over the scrolling spectrogram | the landscape IS the spectrum: lateral = log frequency, depth = time — every sound erupts at the horizon and rides toward you; horizon carries a live EQ aurora |
 | 11 | **harmony bloom · chroma mandala** | 12-petal flower + roto-zoom feedback echo | each petal is a pitch class sized by its energy (chords are visible shapes), petal hues sit on the circle of fifths, interior rings are a bass→treble frequency ladder, beats step the rotation |
 | 12 | **aurora silk · liquid light** | IQ nested domain warping (f(p+g(p+h(p)))) | each band owns a warp layer — bass folds the sheets, mids the turbulence, treble the crackle; every filament is lit by its own spectrum slice |
-| 13 | **voice aurora · pitch contour** | live pitch tracking drawn as flowing arcs | speech-only scene: ribbon rides your pitch, sibilance shadows above, consonants spark |
+| 13 | **murmuration · dusk flock** | 65k field-coupled boids (no neighbor lists: a 128² velocity/density field drives alignment/cohesion/separation) | kicks flare separation so the cloud bursts and regroups, mids tighten formation, onsets launch a hawk through the flock, and every bird is keyed to one spectrum slice — its band's energy agitates it |
+| 14 | **voice aurora · pitch contour** | live pitch tracking drawn as flowing arcs | speech-only scene: ribbon rides your pitch, sibilance shadows above, consonants spark |
 
 ## How it listens
 
