@@ -45,6 +45,13 @@
   const MARCH_FRAG = M.FRAG_HEADER + M.GLSL_LIB + M.GLSL_AUDIO + M.GLSL_SPECTRUM + `
   uniform vec2 uRes;
   uniform float uAmp, uSway, uKeyHue;
+  uniform vec4 uMeteor; // az, height, progress, active
+
+  // planetary curvature: the world drops away with distance, so approaching
+  // sounds rise over the horizon like mountains over a planet's limb
+  float curveDrop(vec2 q) {
+    return (q.y * q.y + q.x * q.x * 0.5) / 160.0;
+  }
 
   const float WIDTH = 6.0;   // lateral half-extent (frequency axis)
   const float DEPTH = 24.0;  // view distance (time axis)
@@ -54,7 +61,8 @@
     float fx = clamp(q.x / WIDTH * 0.5 + 0.5, 0.0, 1.0);
     float tz = clamp(q.y / DEPTH, 0.0, 1.0);
     // newest history row sits at the horizon: sounds approach the camera
-    return texture(uSpectrogram, vec2(fx, mix(0.03, 0.985, tz))).r * uAmp;
+    return texture(uSpectrogram, vec2(fx, mix(0.03, 0.985, tz))).r * uAmp
+         - curveDrop(q);
   }
 
   float fbm3(vec2 p) {
@@ -95,6 +103,18 @@
     float moon = smoothstep(0.99955, 0.99985, md);
     sky += vec3(0.95, 0.88, 1.0) * (moon * 1.6 + pow(md, 400.0) * 0.30);
 
+    // shooting star on onsets: bright head, fading tail
+    if (uMeteor.w > 0.5) {
+      vec2 dir = normalize(vec2(0.55, -0.30));
+      vec2 mp = vec2(uMeteor.x, uMeteor.y) + dir * uMeteor.z * 0.45;
+      vec2 sd = vec2(az, y) - mp;
+      float along = dot(sd, dir), perp = dot(sd, vec2(-dir.y, dir.x));
+      float head = exp(-dot(sd, sd) * 2600.0);
+      float tail = exp(-perp * perp * 5200.0)
+                 * step(along, 0.0) * exp(along * 16.0) * smoothstep(-0.20, -0.01, along);
+      sky += vec3(0.9, 0.95, 1.0) * (head * 1.6 + tail * 0.8) * (1.0 - uMeteor.z);
+    }
+
     // round stars on a stable directional grid
     if (rd.z > 0.25) {
       vec2 sc = rd.xy / rd.z * 220.0;
@@ -120,9 +140,6 @@
       return;
     }
 
-    // downward rays cross y=0 at a known distance: clamp the march there
-    float tMax = min(DEPTH, -ro.y / rd.y + 0.5);
-
     // dithered start + short steps + bisection: no terracing, no speckled tips
     float t = 0.06 + hash12(gl_FragCoord.xy) * 0.06;
     float tPrev = t;
@@ -133,7 +150,7 @@
       if (dh < 0.0015 * t) { hit = true; break; }
       tPrev = t;
       t += max(dh * 0.35, 0.012);
-      if (t > tMax) break;
+      if (t > DEPTH) break;
     }
 
     vec3 col;
@@ -157,7 +174,9 @@
       float fx = clamp(p.x / WIDTH * 0.5 + 0.5, 0.0, 1.0);
       float tz = clamp(p.z / DEPTH, 0.0, 1.0);
       vec3 sg = texture(uSpectrogram, vec2(fx, mix(0.03, 0.985, tz))).rgb;
-      float hN = clamp(p.y / max(uAmp, 0.01), 0.0, 1.0);
+      // height above the local planet surface, not the flat plane
+      float hLocal = p.y + curveDrop(p.xz);
+      float hN = clamp(hLocal / max(uAmp, 0.01), 0.0, 1.0);
 
       vec3 base = pal(hue + fx * 0.45, vec3(0.45), vec3(0.45), vec3(1.0), vec3(0.0, 0.33, 0.67));
       // side-top key light (matches the moon): frontal light flattens relief
@@ -182,6 +201,26 @@
       float crest = smoothstep(0.55, 1.0, hN) * sg.b;
       col += pal(hue + fx * 0.45 + 0.5, vec3(0.55), vec3(0.45), vec3(1.0), vec3(0.0, 0.33, 0.67))
              * crest * (1.2 + uBeat * 1.6);
+
+      // warm rim light from the sun sunk below the horizon — silhouettes burn
+      float rim = max(dot(n, normalize(vec3(0.0, 0.18, 1.0))), 0.0)
+                * smoothstep(0.95, 0.35, n.y);
+      col += vec3(1.0, 0.45, 0.25) * rim * rim * 0.30;
+
+      // luminous rivers pooling in the valley floors, fed by the spectrum
+      float valley = smoothstep(0.32, 0.04, hN);
+      float river = smoothstep(0.45, 0.80, fbm(p.xz * vec2(1.6, 0.45)));
+      col += pal(hue + fx * 0.45 + 0.35, vec3(0.5), vec3(0.5), vec3(1.0), vec3(0.0, 0.33, 0.67))
+             * valley * river * (0.25 + sg.g * 1.6 + uBeat * 0.5);
+
+      // crystalline sparkle on the high snow
+      float sparkle = step(0.992, hash12(floor(p.xz * 64.0) + floor(uTime * 9.0)));
+      col += vec3(0.9, 0.95, 1.0) * sparkle * smoothstep(0.55, 0.85, hN)
+             * (0.25 + uTreble * 1.1);
+
+      // glowing mist settling in the low canyons
+      col += pal(hue + 0.3, vec3(0.4), vec3(0.4), vec3(1.0), vec3(0.0, 0.33, 0.67))
+             * exp(-max(hLocal, 0.0) * 2.5) * (0.05 + uHarmonic * 0.07);
 
       // distance fog into the sky
       col = mix(col, skyColor(rd, hue), smoothstep(DEPTH * 0.45, DEPTH * 0.98, t));
@@ -218,6 +257,7 @@
       let buf = null, smoothT = null;
       let keyHue = 0.62;
       let frames = 0;
+      const meteor = { az: 0, y: 0, prog: 1, cool: 0 };
 
       return {
         resize(w, h) {
@@ -227,8 +267,19 @@
           else buf.resize(bw, bh);
         },
         update(dt, audio) {
-          keyHue = M.chromaHue(audio.f.chroma, keyHue, dt);
+          const f = audio.f;
+          keyHue = M.chromaHue(f.chroma, keyHue, dt);
           if (ar.update(dt)) this.resize(glc.width, glc.height);
+
+          // shooting stars on strong onsets
+          meteor.cool -= dt;
+          if (meteor.prog >= 1 && f.onset === 1 && meteor.cool <= 0) {
+            meteor.az = 0.12 + Math.random() * 0.6;
+            meteor.y = 0.28 + Math.random() * 0.16;
+            meteor.prog = 0;
+            meteor.cool = 2.5;
+          }
+          if (meteor.prog < 1) meteor.prog += dt / 0.9;
         },
         render(out, audio, t) {
           if (!buf) this.resize(glc.width, glc.height);
@@ -250,7 +301,9 @@
                 .v2('uRes', buf.w, buf.h)
                 .f('uAmp', 1.25 + f.level * 0.6)
                 .f('uSway', Math.sin(f.phaseLevel * 0.18) * 1.1)
-                .f('uKeyHue', keyHue);
+                .f('uKeyHue', keyHue)
+                .v4('uMeteor', meteor.az, meteor.y, Math.min(meteor.prog, 1),
+                    meteor.prog < 1 ? 1 : 0);
           glc.draw(pMarch, buf);
 
           pShow.use().tex('uTex', buf.tex, 0)
