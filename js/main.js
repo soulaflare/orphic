@@ -1,11 +1,11 @@
-/* MYTHOS — app shell
+/* ORPHIC — app shell
  * Bootstraps audio + GL, runs the render loop, manages scenes and UI.
- * Scenes self-register via MYTHOS.registerScene({name, modes, create}).
+ * Scenes self-register via ORPHIC.registerScene({name, modes, create}).
  * create(glc) -> { update(dt, audio, t), render(out), resize(w,h), dispose() }
  */
 (function () {
   'use strict';
-  const M = window.MYTHOS = window.MYTHOS || {};
+  const M = window.ORPHIC = window.ORPHIC || {};
   M.scenes = M.scenes || []; // registry itself lives in scene-utils.js
 
   window.addEventListener('DOMContentLoaded', () => {

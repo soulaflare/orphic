@@ -1,4 +1,4 @@
-/* MYTHOS — audio engine
+/* ORPHIC — audio engine
  * Handles input sources (MP3 file / microphone), the Web Audio graph,
  * and exposes raw FFT + waveform data each frame.
  * Classic script (no modules) so the app runs from file://.
@@ -186,6 +186,6 @@
     }
   }
 
-  window.MYTHOS = window.MYTHOS || {};
-  window.MYTHOS.AudioEngine = AudioEngine;
+  window.ORPHIC = window.ORPHIC || {};
+  window.ORPHIC.AudioEngine = AudioEngine;
 })();

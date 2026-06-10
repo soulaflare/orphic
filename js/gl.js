@@ -1,4 +1,4 @@
-/* MYTHOS — WebGL2 micro-framework
+/* ORPHIC — WebGL2 micro-framework
  * Shader compilation, fullscreen-triangle draws, ping-pong float framebuffers
  * for GPGPU simulations, and a tiny uniform-setting API.
  */
@@ -175,6 +175,6 @@
     }
   }
 
-  window.MYTHOS = window.MYTHOS || {};
-  window.MYTHOS.GL = GL;
+  window.ORPHIC = window.ORPHIC || {};
+  window.ORPHIC.GL = GL;
 })();

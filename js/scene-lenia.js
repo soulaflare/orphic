@@ -1,4 +1,4 @@
-/* MYTHOS scene — LENIA · alien garden
+/* ORPHIC scene — LENIA · alien garden
  * Bert Chan's continuous cellular automaton (Lenia, 2019) — Game of Life
  * generalized to continuous space/time/state. A ring-shaped convolution
  * kernel feeds a gaussian growth function; lifeforms bloom, glide and
@@ -9,7 +9,7 @@
  */
 (function () {
   'use strict';
-  const M = window.MYTHOS;
+  const M = window.ORPHIC;
 
   const R = 10; // kernel radius in cells
 

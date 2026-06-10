@@ -1,7 +1,7 @@
-/* MYTHOS — shared scene helpers: audio uniforms + common GLSL chunks */
+/* ORPHIC — shared scene helpers: audio uniforms + common GLSL chunks */
 (function () {
   'use strict';
-  const M = window.MYTHOS = window.MYTHOS || {};
+  const M = window.ORPHIC = window.ORPHIC || {};
 
   /** Scene registry — scene files self-register, main.js consumes. */
   M.scenes = M.scenes || [];

@@ -1,4 +1,4 @@
-/* MYTHOS — speech vs music classifier
+/* ORPHIC — speech vs music classifier
  * Lightweight heuristic running on extracted features over a ~2.5s window.
  * Speech signature: energy modulation near the 3-5 Hz syllabic rate,
  * frequent voiced/unvoiced alternation, pauses, pitch in 80-400 Hz with
@@ -102,6 +102,6 @@
     }
   }
 
-  window.MYTHOS = window.MYTHOS || {};
-  window.MYTHOS.SpeechMusicClassifier = SpeechMusicClassifier;
+  window.ORPHIC = window.ORPHIC || {};
+  window.ORPHIC.SpeechMusicClassifier = SpeechMusicClassifier;
 })();

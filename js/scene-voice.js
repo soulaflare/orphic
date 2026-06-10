@@ -1,4 +1,4 @@
-/* MYTHOS scene — VOICE AURORA · pitch contour arcs
+/* ORPHIC scene — VOICE AURORA · pitch contour arcs
  * Built on a verified perceptual finding (IEEE/ACM TASLP 2020): speech forms
  * smooth arc-like harmonic trajectories in time-frequency space, unlike
  * music's stationary striations. So the voice is drawn as exactly that — a
@@ -8,7 +8,7 @@
  */
 (function () {
   'use strict';
-  const M = window.MYTHOS;
+  const M = window.ORPHIC;
   const N = 512; // history samples (~8.5s at 60fps)
 
   const FRAG = M.FRAG_HEADER + M.GLSL_LIB + M.GLSL_AUDIO + `

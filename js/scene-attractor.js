@@ -1,4 +1,4 @@
-/* MYTHOS scene — STRANGE ATTRACTOR · chaos cathedral
+/* ORPHIC scene — STRANGE ATTRACTOR · chaos cathedral
  * Peter de Jong map: x' = sin(a·y) − cos(b·x), y' = sin(c·x) − cos(d·y).
  * 262k particles iterate the map each frame; additive accumulation reveals
  * the attractor's density skeleton. Beat-synced attractor morphing: each
@@ -8,7 +8,7 @@
  */
 (function () {
   'use strict';
-  const M = window.MYTHOS;
+  const M = window.ORPHIC;
   const DIM = 512;
 
   // known-good de Jong parameter sets (dense, structured attractors)

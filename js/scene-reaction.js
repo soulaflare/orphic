@@ -1,4 +1,4 @@
-/* MYTHOS scene — REACTION-DIFFUSION · turing bloom
+/* ORPHIC scene — REACTION-DIFFUSION · turing bloom
  * Gray-Scott model (Pearson 1993, Karl Sims' formulation) on a half-res
  * float grid, 10 sim steps/frame. The feed/kill pair drifts between known
  * pattern regimes (mitosis, worms, coral); bass perturbs the feed rate,
@@ -7,7 +7,7 @@
  */
 (function () {
   'use strict';
-  const M = window.MYTHOS;
+  const M = window.ORPHIC;
 
   const SIM_FRAG = M.FRAG_HEADER + M.GLSL_LIB + `
   uniform sampler2D uState;

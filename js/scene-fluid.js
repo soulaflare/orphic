@@ -1,4 +1,4 @@
-/* MYTHOS scene — STABLE FLUIDS · ink nebula
+/* ORPHIC scene — STABLE FLUIDS · ink nebula
  * Jos Stam's "Stable Fluids" (1999) with vorticity confinement, the
  * GPU-fluid lineage popularised by GPU Gems / Pavel Dobryakov. Velocity at
  * quarter res, dye at half res, 20 Jacobi pressure iterations. Audio: beats
@@ -8,7 +8,7 @@
  */
 (function () {
   'use strict';
-  const M = window.MYTHOS;
+  const M = window.ORPHIC;
   const H = M.FRAG_HEADER;
 
   const ADVECT = H + `

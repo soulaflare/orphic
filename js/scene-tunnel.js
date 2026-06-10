@@ -1,4 +1,4 @@
-/* MYTHOS scene — NEON TUNNEL · hyperdrive
+/* ORPHIC scene — NEON TUNNEL · hyperdrive
  * Demoscene polar tunnel (uv → angle, 1/r) wearing synthwave neon: a
  * kaleidoscopically folded grid rushing past, beat-launched light rings,
  * chromatic aberration on the kick. Travel speed rides the level phase
@@ -7,7 +7,7 @@
  */
 (function () {
   'use strict';
-  const M = window.MYTHOS;
+  const M = window.ORPHIC;
 
   const FRAG = M.FRAG_HEADER + M.GLSL_LIB + M.GLSL_AUDIO + `
   uniform vec2 uRes;

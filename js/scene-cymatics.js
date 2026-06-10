@@ -1,4 +1,4 @@
-/* MYTHOS scene — CYMATICS · chladni resonance
+/* ORPHIC scene — CYMATICS · chladni resonance
  * Chladni plate eigenmodes: w = cos(nπx)cos(mπy) − cos(mπx)cos(nπy).
  * Sand collects on nodal lines (w ≈ 0); here the nodal web glows instead.
  * Three superimposed mode pairs are weighted by bass / mid / treble, so the
@@ -7,7 +7,7 @@
  */
 (function () {
   'use strict';
-  const M = window.MYTHOS;
+  const M = window.ORPHIC;
 
   const FRAG = M.FRAG_HEADER + M.GLSL_LIB + M.GLSL_AUDIO + `
   uniform vec4 uModeA; // n1, m1, n2, m2

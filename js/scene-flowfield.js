@@ -1,4 +1,4 @@
-/* MYTHOS scene — CURL-NOISE FLOW FIELD · star river
+/* ORPHIC scene — CURL-NOISE FLOW FIELD · star river
  * Bridson et al. (2007) divergence-free curl noise advecting 262k particles
  * with additive feedback trails. Audio: spectral centroid scales the noise
  * field (bright sound → fine turbulence), bass drives flow speed, onsets
@@ -6,7 +6,7 @@
  */
 (function () {
   'use strict';
-  const M = window.MYTHOS;
+  const M = window.ORPHIC;
   const DIM = 512;
 
   const INIT_FRAG = M.FRAG_HEADER + M.GLSL_LIB + `

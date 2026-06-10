@@ -1,4 +1,4 @@
-/* MYTHOS scene — PHYSARUM · living network
+/* ORPHIC scene — PHYSARUM · living network
  * Jeff Jones (2010) slime-mold transport-network model, GPU edition.
  * 262k agents in a float texture; three competing species deposit into
  * R/G/B trail channels and prefer their own pheromone, weaving interlocked
@@ -8,7 +8,7 @@
  */
 (function () {
   'use strict';
-  const M = window.MYTHOS;
+  const M = window.ORPHIC;
   const DIM = 512; // DIM*DIM agents
 
   const INIT_FRAG = M.FRAG_HEADER + M.GLSL_LIB + `

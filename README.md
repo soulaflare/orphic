@@ -1,8 +1,8 @@
-# MYTHOS — audio-reactive generative visualizer
+# ORPHIC — audio-reactive generative visualizer
 
-Nine GPU pattern simulations that react live to **music (MP3/WAV/OGG/M4A)** or your
-**microphone**, with automatic speech-vs-music detection that re-tunes the visuals
-for voice.
+Nine GPU pattern simulations that react live to **music (MP3/WAV/OGG/M4A)**, your
+**microphone**, or **another tab's audio** (Spotify, YouTube, …), with automatic
+speech-vs-music detection that re-tunes the visuals for voice.
 
 ## Run it
 
@@ -11,6 +11,24 @@ no server, no build, no dependencies). Then:
 
 - **play a file** — or drag & drop any audio file onto the window
 - **use microphone** — live music or speech (grant mic permission)
+- **capture spotify / tab audio** — Chrome & Edge only: share a tab and tick
+  "Share tab audio" in the picker (Firefox/Safari never return tab audio; there,
+  route audio through a virtual device like BlackHole and use the mic source)
+
+## Chrome extension
+
+The extension captures a tab with one toolbar click — no share picker, and none
+of the persistent "Sharing this tab" banner that `getDisplayMedia` forces on the
+web app (Chrome draws it even over fullscreen; it cannot be suppressed).
+
+```sh
+./scripts/build-extension.sh   # assembles dist/extension from js/ + css/
+```
+
+Then `chrome://extensions` → enable Developer mode → **Load unpacked** →
+`dist/extension`. Open a tab that's playing audio and click the ORPHIC toolbar
+button. Note: `chrome.tabCapture` mutes the captured tab, so the visualizer tab
+takes over playback (its volume control now controls the music).
 
 ### Controls
 

@@ -1,4 +1,4 @@
-/* MYTHOS — audio feature extraction
+/* ORPHIC — audio feature extraction
  * Turns raw FFT/waveform into musically meaningful, frame-rate signals:
  *   bands (bass/mid/treble) with attack/release envelopes,
  *   spectral flux + adaptive onset detection, beat tracking (BPM via
@@ -247,6 +247,6 @@
     }
   }
 
-  window.MYTHOS = window.MYTHOS || {};
-  window.MYTHOS.FeatureExtractor = FeatureExtractor;
+  window.ORPHIC = window.ORPHIC || {};
+  window.ORPHIC.FeatureExtractor = FeatureExtractor;
 })();
