@@ -5,7 +5,7 @@
  *   macOS    — CoreAudio process taps, macOS 14.2+ (default since Electron 39)
  *   Linux    — PulseAudio/PipeWire monitor source (feature-flagged below)
  */
-import { app, BrowserWindow, desktopCapturer, dialog, ipcMain, net, protocol, session } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, net, protocol, session } from 'electron'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { MEDIA_COMMANDS, sendMediaCommand, type MediaCommand, type MediaResult } from './media'
@@ -77,17 +77,12 @@ function registerAppProtocol(): void {
 
 function hardenSession(ses: Electron.Session): void {
   // getDisplayMedia from the renderer lands here: skip any picker UI and
-  // answer with the primary screen (a video track is mandatory in the API —
-  // the renderer stops it immediately) plus OS loopback audio.
+  // answer with OS loopback audio alone. Never attach a screen video source —
+  // on macOS that drags in the Screen Recording permission (a System Settings
+  // trip), while audio-only loopback needs just the one-click "System Audio
+  // Recording Only" consent.
   ses.setDisplayMediaRequestHandler((_request, callback) => {
-    desktopCapturer
-      .getSources({ types: ['screen'] })
-      .then((sources) => {
-        const screen = sources[0]
-        if (screen) callback({ video: screen, audio: 'loopback' })
-        else callback({})
-      })
-      .catch(() => callback({}))
+    callback({ audio: 'loopback' })
   })
 
   // Only what the visualizer needs: mic, system-audio capture, fullscreen.

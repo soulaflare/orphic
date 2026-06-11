@@ -10,10 +10,18 @@ files:
   - js/**
 asar: true
 
+# Without a Developer ID, ad-hoc re-sign after the fuse patch — otherwise the
+# kernel kills the app at launch on Apple Silicon (see build/adhoc-sign.cjs).
+afterSign: build/adhoc-sign.cjs
+
 # Harden the packaged binary (https://www.electronjs.org/docs/latest/tutorial/fuses)
 electronFuses:
   runAsNode: false
-  enableCookieEncryption: true
+  # Keep cookie encryption OFF: it stores a key in the macOS keychain ("ORPHIC
+  # Safe Storage"), and with an ad-hoc signature every rebuild looks like a
+  # different app — so macOS demands the keychain password on every launch.
+  # ORPHIC keeps no cookies/credentials, so there is nothing to encrypt.
+  enableCookieEncryption: false
   enableNodeOptionsEnvironmentVariable: false
   enableNodeCliInspectArguments: false
   enableEmbeddedAsarIntegrityValidation: true

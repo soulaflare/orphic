@@ -63,8 +63,12 @@
       // ask BEFORE tearing down the current source, so a cancelled picker
       // leaves the current playback untouched
       const stream = await navigator.mediaDevices.getDisplayMedia(desktop ? {
-        video: true, // a video track is mandatory in the API; stopped below
-        audio: true, // the display-media handler swaps in loopback audio
+        // audio-only: the display-media handler answers with OS loopback and
+        // no video source — requesting video here would make Electron throw
+        // ("Video was requested, but no video stream was provided"), and a
+        // screen track would cost the Screen Recording permission on macOS
+        video: false,
+        audio: true,
       } : {
         video: true, // a video track is mandatory; stopped below
         audio: {
