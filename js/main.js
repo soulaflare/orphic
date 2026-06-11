@@ -55,12 +55,12 @@
     const desktop = !!(window.orphic && window.orphic.isElectron);
     if (desktop) {
       const subs = {
-        darwin: 'everything playing on this mac — first use asks permission',
-        win32: 'everything playing on this pc',
-        linux: 'everything playing — pipewire / pulseaudio',
+        darwin: 'to everything playing on this mac',
+        win32: 'to everything playing on this pc',
+        linux: 'to everything playing on this machine',
       };
       ui.systemBtn.querySelector('.sub').textContent =
-        subs[window.orphic.platform] || 'everything playing on this device';
+        subs[window.orphic.platform] || 'to everything playing on this device';
     }
 
     let toastTimer = 0;
