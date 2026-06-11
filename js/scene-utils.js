@@ -133,6 +133,59 @@
     };
   };
 
+  /** Reusable bloom: threshold a source texture, downsample, separable
+   *  gaussian blur, hand back a soft glow texture to add in a composite pass.
+   *  makeBloom(glc, {div, passes}); call resize(w,h) then render(srcTex,w,h)
+   *  each frame; the returned (and .tex) low-res texture is the glow. */
+  M.makeBloom = function (glc, opts) {
+    opts = opts || {};
+    const div = opts.div || 4, passes = opts.passes || 3;
+    const THRESH = M.FRAG_HEADER + `
+    uniform sampler2D uSrc; uniform float uThresh, uKnee;
+    void main() {
+      vec3 c = texture(uSrc, vUV).rgb;
+      float b = max(c.r, max(c.g, c.b));
+      float k = smoothstep(uThresh, uThresh + uKnee, b);
+      fragColor = vec4(c * k, 1.0);
+    }`;
+    const BLUR = M.FRAG_HEADER + `
+    uniform sampler2D uSrc; uniform vec2 uDir;
+    void main() {
+      // 9-tap linear gaussian (sigma ~2.4)
+      vec3 s = texture(uSrc, vUV).rgb * 0.2270;
+      s += texture(uSrc, vUV + uDir * 1.3846).rgb * 0.3162;
+      s += texture(uSrc, vUV - uDir * 1.3846).rgb * 0.3162;
+      s += texture(uSrc, vUV + uDir * 3.2308).rgb * 0.0702;
+      s += texture(uSrc, vUV - uDir * 3.2308).rgb * 0.0702;
+      fragColor = vec4(s, 1.0);
+    }`;
+    const pThresh = glc.program(THRESH);
+    const pBlur = glc.program(BLUR);
+    let pp = null, w = 0, h = 0;
+    return {
+      tex: null,
+      resize(fw, fh) {
+        w = Math.max(2, Math.round(fw / div)); h = Math.max(2, Math.round(fh / div));
+        if (!pp) pp = glc.pingpong(w, h); else pp.resize(w, h);
+      },
+      render(srcTex, fw, fh, thresh) {
+        if (!pp || Math.abs(w - fw / div) > 2) this.resize(fw, fh);
+        pThresh.use().f('uThresh', thresh == null ? 0.45 : thresh).f('uKnee', 0.35)
+          .tex('uSrc', srcTex, 0);
+        glc.draw(pThresh, pp.write); pp.swap();
+        for (let i = 0; i < passes; i++) {
+          pBlur.use().v2('uDir', 1 / w, 0).tex('uSrc', pp.read.tex, 0);
+          glc.draw(pBlur, pp.write); pp.swap();
+          pBlur.use().v2('uDir', 0, 1 / h).tex('uSrc', pp.read.tex, 0);
+          glc.draw(pBlur, pp.write); pp.swap();
+        }
+        this.tex = pp.read.tex;
+        return this.tex;
+      },
+      dispose() { if (pp) pp.dispose(); pThresh.dispose(); pBlur.dispose(); },
+    };
+  };
+
   /** GLSL: uniform declarations matching audioUniforms(). */
   M.GLSL_AUDIO = `
   uniform float uTime, uBass, uBassFast, uMid, uTreble, uLevel;

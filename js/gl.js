@@ -118,6 +118,11 @@
       if (l) this.glc.gl.uniform1fv(l, arr);
       return this;
     }
+    f4v(name, arr) { // packed vec4 array (x,y,z,w per element)
+      const l = this._loc(name) || this._loc(name + '[0]');
+      if (l) this.glc.gl.uniform4fv(l, arr);
+      return this;
+    }
     i(name, x) { const l = this._loc(name); if (l) this.glc.gl.uniform1i(l, x); return this; }
     v2(name, x, y) { const l = this._loc(name); if (l) this.glc.gl.uniform2f(l, x, y); return this; }
     v3(name, x, y, z) { const l = this._loc(name); if (l) this.glc.gl.uniform3f(l, x, y, z); return this; }
