@@ -10,10 +10,9 @@
     "build": "electron-vite build",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "test:smoke": "electron-vite build && ORPHIC_SMOKE=1 electron .",
+    "test:smoke": "electron-vite build && electron . --smoke",
     "dist:mac": "electron-vite build && electron-builder --mac",
-    "dist:win": "electron-vite build && electron-builder --win",
-    "dist:linux": "electron-vite build && electron-builder --linux"
+    "dist:win": "electron-vite build && electron-builder --win"
   },
   "devDependencies": {
     "@types/node": "^24.13.1",

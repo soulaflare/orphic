@@ -1,4 +1,15 @@
 /* ORPHIC — UI chrome */
+
+/* Self-hosted so every OS renders the same face (no system Inter required).
+ * Variable weight axis covers the 200/300/400 used below. SIL OFL licensed. */
+@font-face {
+  font-family: 'Inter';
+  src: url('fonts/InterVariable.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
   --fg: #e8e6f0;
   --dim: rgba(232, 230, 240, 0.45);

@@ -5,7 +5,7 @@
  *   macOS    — CoreAudio process taps, macOS 14.2+ (default since Electron 39)
  *   Linux    — PulseAudio/PipeWire monitor source (feature-flagged below)
  */
-import { app, BrowserWindow, desktopCapturer, ipcMain, net, protocol, session } from 'electron'
+import { app, BrowserWindow, desktopCapturer, dialog, ipcMain, net, protocol, session } from 'electron'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { MEDIA_COMMANDS, sendMediaCommand, type MediaCommand, type MediaResult } from './media'
@@ -14,13 +14,20 @@ const APP_SCHEME = 'orphic'
 const APP_ORIGIN = `${APP_SCHEME}://app`
 
 /** `npm run test:smoke` — loads the renderer's #test self-check, which
- * compiles and renders every scene once, then exits with a pass/fail code. */
-const isSmokeTest = process.env.ORPHIC_SMOKE === '1'
+ * compiles and renders every scene once, then exits with a pass/fail code.
+ * The --smoke flag exists because `VAR=1 cmd` env syntax doesn't run on
+ * Windows shells. */
+const isSmokeTest = process.env.ORPHIC_SMOKE === '1' || process.argv.includes('--smoke')
 
-// Chromium's PulseAudio loopback capture is still behind a default-off
-// feature flag on Linux (Chromium 148, June 2026).
+// Linux is unofficial (untested) but kept working: PulseAudio loopback is
+// still behind a default-off feature flag (Chromium 148, June 2026), and
+// Wayland sessions need the PipeWire capturer to enumerate a screen source —
+// without one the display-media handler can't attach the loopback audio.
 if (process.platform === 'linux') {
-  app.commandLine.appendSwitch('enable-features', 'PulseaudioLoopbackForScreenShare')
+  app.commandLine.appendSwitch(
+    'enable-features',
+    'PulseaudioLoopbackForScreenShare,WebRTCPipeWireCapturer',
+  )
 }
 
 // Never let Chromium claim the hardware media keys: ORPHIC only listens,
@@ -170,6 +177,21 @@ if (!isSmokeTest && !app.requestSingleInstanceLock()) {
   })
 
   app.whenReady().then(() => {
+    // System-audio loopback rides CoreAudio process taps, which appeared in
+    // macOS 14.2 — on anything older capture is permanently silent, so refuse
+    // to run rather than ship a broken-looking app. (Packaged builds also set
+    // LSMinimumSystemVersion; this covers dev runs and zip-extracted apps.)
+    if (process.platform === 'darwin') {
+      const [major = 0, minor = 0] = process.getSystemVersion().split('.').map(Number)
+      if (major < 14 || (major === 14 && minor < 2)) {
+        dialog.showErrorBox(
+          'ORPHIC needs macOS 14.2 or later',
+          'System-audio capture uses CoreAudio process taps, introduced in macOS 14.2 (Sonoma). Please update macOS to run ORPHIC.',
+        )
+        app.exit(1)
+        return
+      }
+    }
     registerAppProtocol()
     hardenSession(session.defaultSession)
     mainWindow = createWindow()

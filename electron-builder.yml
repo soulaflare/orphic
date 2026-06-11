@@ -23,6 +23,9 @@ electronFuses:
 mac:
   category: public.app-category.music
   darkModeSupport: true
+  # System-audio loopback needs CoreAudio process taps (macOS 14.2+) — the
+  # Finder refuses to launch the app on anything older with a clear message.
+  minimumSystemVersion: '14.2'
   target:
     - dmg
     - zip
@@ -38,8 +41,12 @@ mac:
 win:
   target: nsis
 
-linux:
-  target:
-    - AppImage
-  category: AudioVideo
-  synopsis: Audio-reactive generative visualizer
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+
+# Linux is intentionally not packaged right now (untested). The runtime code
+# paths (PulseAudio/PipeWire loopback, MPRIS transport) are kept working —
+# re-add an AppImage target here when Linux support becomes official.

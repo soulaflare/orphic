@@ -150,18 +150,21 @@
             glc.draw(pSim, state.write);
             state.swap();
           }
-          pCover.use().tex('uState', state.read.tex, 0);
-          glc.draw(pCover, coverT);
-          const gl = glc.gl;
-          gl.bindFramebuffer(gl.FRAMEBUFFER, coverT.fbo);
-          let cov = 1; // if readback is unsupported, accept the attempt
-          try {
+          // float readback is only guaranteed on a float target (RGBA8
+          // fallback would silently read zeros and fail every attempt) —
+          // without it, accept the attempt unverified
+          let cov = 1;
+          if (glc.floatOK) {
+            pCover.use().tex('uState', state.read.tex, 0);
+            glc.draw(pCover, coverT);
+            const gl = glc.gl;
+            gl.bindFramebuffer(gl.FRAMEBUFFER, coverT.fbo);
             gl.readPixels(0, 0, 4, 4, gl.RGBA, gl.FLOAT, coverBuf);
             cov = 0;
             for (let i = 0; i < 16; i++) cov += coverBuf[i * 4];
             cov /= 16;
-          } catch (e) { /* run unverified */ }
-          gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+            gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+          }
           if (cov > 0.08) break;
         }
       }
@@ -173,18 +176,19 @@
       // the dish at full coverage forever (hence the -0.05 clamp).
       function homeostasis(dt, target) {
         coverTimer += dt;
-        if (coverTimer >= 0.6) {
+        // on the RGBA8 fallback (no float readback) covRaw stays -1 and the
+        // dish runs unregulated — a phantom-zero reading would instead pin
+        // mu high and park the dish at full coverage
+        if (coverTimer >= 0.6 && glc.floatOK) {
           coverTimer = 0;
           pCover.use().tex('uState', state.read.tex, 0);
           glc.draw(pCover, coverT);
           const gl = glc.gl;
           gl.bindFramebuffer(gl.FRAMEBUFFER, coverT.fbo);
-          try {
-            gl.readPixels(0, 0, 4, 4, gl.RGBA, gl.FLOAT, coverBuf);
-            let cov = 0;
-            for (let i = 0; i < 16; i++) cov += coverBuf[i * 4];
-            covRaw = cov / 16;
-          } catch (e) { /* float readback unsupported — run unregulated */ }
+          gl.readPixels(0, 0, 4, 4, gl.RGBA, gl.FLOAT, coverBuf);
+          let cov = 0;
+          for (let i = 0; i < 16; i++) cov += coverBuf[i * 4];
+          covRaw = cov / 16;
           gl.bindFramebuffer(gl.FRAMEBUFFER, null);
         }
         if (covRaw < 0) return;

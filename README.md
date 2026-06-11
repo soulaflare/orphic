@@ -22,15 +22,19 @@ drivers and no extra dependencies, via Chromium's OS loopback capture
 
 | platform | backend | requirement |
 |---|---|---|
-| Windows | WASAPI loopback | none |
-| macOS | CoreAudio process taps | macOS 14.2+; one-time "System Audio Recording" consent |
-| Linux | PulseAudio / PipeWire monitor | `pipewire-pulse` or PulseAudio (feature flag set automatically) |
+| Windows 10/11 | WASAPI loopback | none |
+| macOS | CoreAudio process taps | **macOS 14.2 (Sonoma) or later** — the app refuses to launch on anything older (process taps don't exist there, capture would be permanently silent); one-time "System Audio Recording" consent |
+
+Linux isn't officially supported right now — there's no packaged build and it's
+untested — but the code paths are all there (PulseAudio/PipeWire loopback
+behind an auto-set feature flag, MPRIS transport) and it should work from
+`npm run dev`.
 
 ```sh
 npm install
 npm run dev          # develop (renderer is static — reload with Cmd/Ctrl+R)
 npm run test:smoke   # build + run the all-scenes self-test inside Electron
-npm run dist:mac     # package (also: dist:win, dist:linux)
+npm run dist:mac     # package (also: dist:win)
 ```
 
 The same `js/` + `css/` + `index.html` power both targets — the renderer
@@ -45,6 +49,24 @@ macOS note: if capture starts but stays silent, the one-time system-audio
 consent was declined — re-enable it in System Settings → Privacy & Security
 (the app shows a hint when this happens, a known Chromium behavior where the
 stream goes dead silently instead of erroring, electron/electron#49607).
+
+### Signing & distribution
+
+Packaged builds are currently unsigned: macOS Gatekeeper shows an
+"unidentified developer" warning and Windows SmartScreen an "unknown
+publisher" one. To sign:
+
+- **macOS** — join the Apple Developer Program ($99/yr), create a
+  *Developer ID Application* certificate, then set `CSC_NAME` (or
+  `CSC_LINK`/`CSC_KEY_PASSWORD`) and notarization credentials
+  (`APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`) in the
+  environment — electron-builder signs and notarizes automatically when
+  they're present.
+- **Windows** — buy a code-signing certificate (OV ≈ $100–300/yr; EV removes
+  the SmartScreen warning immediately, OV only after reputation builds), then
+  point electron-builder at it via `win.signtoolOptions` or the
+  `CSC_LINK`/`CSC_KEY_PASSWORD` env vars. Azure Trusted Signing is the
+  cheaper modern alternative (~$10/mo).
 
 ### Controls
 
