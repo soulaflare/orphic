@@ -445,6 +445,16 @@
     window.addEventListener('keydown', e => {
       const panelOpen = !ui.panel.classList.contains('hidden');
       const onLanding = engine.mode === 'none';
+      // step to the next/prev scene. On the home screen only the idledrive
+      // backdrops are browsable, so the menu never lands on a scene that has
+      // no idle state; once capturing, every scene is reachable.
+      const browse = dir => {
+        if (onLanding && idleScenes.length) {
+          const n = idleScenes.length;
+          const base = Math.max(0, idleScenes.indexOf(targetIdx()));
+          setScene(idleScenes[((base + dir) % n + n) % n]);
+        } else setScene(targetIdx() + dir);
+      };
 
       if (e.key === 'Enter' || e.key === ' ') {
         // preventDefault also keeps a focused button from double-firing
@@ -453,8 +463,8 @@
         else if (panelOpen) { disableAuto(); togglePanel(false); } // pick the highlighted one
         else if (e.key === ' ') setScene(targetIdx() + 1);         // space skips while playing
       }
-      else if (e.key === 'ArrowRight' || e.key === 'n') setScene(targetIdx() + 1);
-      else if (e.key === 'ArrowLeft' || e.key === 'p') setScene(targetIdx() - 1);
+      else if (e.key === 'ArrowRight' || e.key === 'n') browse(1);
+      else if (e.key === 'ArrowLeft' || e.key === 'p') browse(-1);
       else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         // with the pattern panel open, vertical arrows step by grid row
         if (!panelOpen) return;
