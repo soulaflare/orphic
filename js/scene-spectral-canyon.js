@@ -56,9 +56,12 @@
   uniform vec4 uMeteor; // az, height, progress, active
 
   // planetary curvature: the world drops away with distance, so approaching
-  // sounds rise over the horizon like mountains over a planet's limb
+  // sounds rise over the horizon like mountains over a planet's limb. Gentle
+  // enough (large radius) that the ground reaches ~25 units before it grazes
+  // the view, so it has room to melt into the atmosphere rather than cutting
+  // off at a hard silhouette up close.
   float curveDrop(vec2 q) {
-    return (q.y * q.y + q.x * q.x * 0.5) / 160.0;
+    return (q.y * q.y + q.x * q.x * 0.5) / 320.0;
   }
 
   const float WIDTH = 6.0;   // lateral half-extent (frequency axis)
@@ -258,9 +261,15 @@
       col += pal(hue + 0.3, vec3(0.4), vec3(0.4), vec3(1.0), vec3(0.0, 0.33, 0.67))
              * exp(-max(hLocal, 0.0) * 2.5) * (0.05 + uHarmonic * 0.07);
 
-      // dissolve the terrain fully into the horizon atmosphere — complete well
-      // before FAR so the plane's far edge is never seen, only haze
-      col = mix(col, skyColor(rd, hue), smoothstep(DEPTH * 0.42, FAR, t));
+      // aerial perspective: an analytic exp fog (no marching, ~free) that
+      // SATURATES by the ground's silhouette distance (~25), so the terrain
+      // reaches sky-colour before it curves out of view and the hard horizon
+      // edge dissolves entirely. The height term lets tall peaks rise THROUGH
+      // the haze instead of melting into it, so mountains still emerge over the
+      // atmosphere while the flat ground around them disappears.
+      float distFog = 1.0 - exp(-t * t * 0.0061);
+      float fog = distFog * exp(-max(hLocal, 0.0) * 1.1);
+      col = mix(col, skyColor(rd, hue), fog);
     } else {
       col = skyColor(rd, hue);
     }
