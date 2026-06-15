@@ -132,17 +132,21 @@
 
   // (feed, kill) waypoints — the field's drifting CENTRE; the spatial fbm
   // spreads ±span around whichever point we sit on, so each regime becomes a
-  // sea of that pattern threaded with neighbouring regimes and dead voids
+  // sea of that pattern threaded with neighbouring regimes and dead voids.
+  // All MUSIC waypoints sit in the stripe/worm/labyrinth band (Munafo/Pearson:
+  // F≈0.042–0.058, k≈0.060–0.065) so the living tissue always reads as flowing
+  // lines and maze texture, never relaxing into a field of plain dots — only
+  // the silent REST below is a dotted regime.
   const REGIMES = [
-    [0.0367, 0.0649], // mitosis
     [0.0460, 0.0630], // worms
-    [0.0545, 0.0620], // coral growth
-    [0.0300, 0.0620], // solitons
-    [0.0260, 0.0580], // pulsing chaos
+    [0.0540, 0.0622], // coral
+    [0.0580, 0.0648], // dense labyrinth / maze
+    [0.0500, 0.0608], // fat branching cells
+    [0.0430, 0.0615], // loose curling worms
   ];
   // rest regime: mitosis spots, where the pattern locks in and holds. Silence
   // settles here so the dotted bloom stays alive instead of wilting away.
-  const REST = REGIMES[0]; // [0.0367, 0.0649] mitosis
+  const REST = [0.0367, 0.0649]; // mitosis
 
   M.registerScene({
     name: 'turing bloom · reaction-diffusion',
@@ -153,7 +157,7 @@
       const pField = glc.program(FIELD_FRAG);
       const pInit = glc.program(INIT_FRAG);
       const pShow = glc.program(SHOW_FRAG);
-      let regime = 1, regimeBlend = 0;  // start in worms — fills fast on cold start
+      let regime = 0, regimeBlend = 0;  // start in worms — fills fast on cold start
       const off = { x: 0, y: 0 };       // drifting field offset (migrating coastlines)
       let splat = { x: 0.5, y: 0.5, r: 0, amt: 0 };
       let clearPulse = 0;               // tide-out: bursts/beats open the oceans wider
@@ -186,19 +190,28 @@
           const a = REGIMES[regime], b = REGIMES[(regime + 1) % REGIMES.length];
           const s = regimeBlend * regimeBlend * (3 - 2 * regimeBlend);
           const q = Math.min(1, f.quiet); // 0 = music, 1 = settled silence
+          // DEEP-quiet gate: the silent dotted garden is only for near-total
+          // silence. A merely quiet/slow song (or a fade-out still in progress)
+          // must stay in the music world — flowing lines + oceans — instead of
+          // being dragged a fraction of the way into mitosis spots. So remap the
+          // raw quiet envelope through a smoothstep that holds at 0 until q≈0.6.
+          const rt = Math.max(0, Math.min(1, (q - 0.6) / 0.32));
+          const rest = rt * rt * (3 - 2 * rt); // 0 for music & quiet songs, 1 only near silence
           let feed = a[0] + (b[0] - a[0]) * s + f.bass * 0.006;
-          let kill = a[1] + (b[1] - a[1]) * s + f.centroid * 0.0015;
-          // silence: settle the field's centre toward the mitosis regime, where
-          // spots lock in and hold, so a calm dotted archipelago survives the dark
-          feed += (REST[0] - feed) * q;
-          kill += (REST[1] - kill) * q;
+          // keep the kill nudge small so bright/trebly passages can't shove the
+          // tissue up out of the stripe band into spots
+          let kill = a[1] + (b[1] - a[1]) * s + f.centroid * 0.0008;
+          // near silence only: settle toward the mitosis regime so a calm dotted
+          // archipelago locks in and holds through the dark
+          feed += (REST[0] - feed) * rest;
+          kill += (REST[1] - kill) * rest;
 
           // drift & warp the feed/kill field so the continents and voids migrate
           // and reshape — but FREEZE both toward silence. The silent garden runs
           // a slow 8-step chemistry that can't regrow fast enough under a moving
           // field, so a near-static field lets the calm dots lock in and hold;
           // music thaws it back into churning, swirling coastlines.
-          const calm = 1 - q;          // 0 in silence, 1 in music
+          const calm = 1 - rest;       // 0 only near silence, 1 for music & quiet songs
           const energy = Math.min(1, f.level * 1.5 + f.flux * 4);
           const driftSpeed = (0.005 + energy * 0.016) * (0.12 + 0.88 * calm);
           off.x += dt * driftSpeed;
@@ -223,12 +236,12 @@
           // it up (calmer, fuller garden); the warm-up pulls it up early; bass and
           // clearPulse pull it down so the oceans breathe and widen with the music.
           const feedSpan = 0.006 * calm;
-          const killSpan = 0.016 * (1 - q * 0.4) * warm * calm;
+          const killSpan = 0.016 * (1 - rest * 0.4) * warm * calm;
           const feedDip = 0.020 * calm * warm; // music only — see FIELD_FRAG
-          // silence keeps smaller, calmer oceans (higher threshold) so the
-          // dotted garden mostly holds; music opens them up and lets bass /
-          // clearPulse pull the tide out wider.
-          const voidThresh = (0.49 + q * 0.25) + (1 - warm) * 0.30
+          // near silence keeps smaller, calmer oceans (higher threshold) so the
+          // dotted garden mostly holds; music & quiet songs open them up and let
+          // bass / clearPulse pull the tide out wider.
+          const voidThresh = (0.49 + rest * 0.25) + (1 - warm) * 0.30
             - f.bass * 0.025 - clearPulse * 0.10;
 
           pField.use()
@@ -256,9 +269,9 @@
             splat.x = Math.random(); splat.y = Math.random();
             splat.r = 0.008 + f.flux * 0.1;
             splat.amt = 0.45;
-          } else if (q > 0.5) {
-            // silence has no onsets to nucleate from — drop a soft seed now and
-            // then so the archipelago slowly repopulates as voids drift through
+          } else if (rest > 0.5) {
+            // near silence has no onsets to nucleate from — drop a soft seed now
+            // and then so the archipelago slowly repopulates as voids drift through
             restSeedT -= dt;
             if (restSeedT <= 0) {
               restSeedT = 1.0 + Math.random() * 1.3;
@@ -269,8 +282,9 @@
             }
           }
 
-          // chemistry rate: a calm crawl in silence, a brisk churn under music
-          const STEPS = q > 0.5 ? 8 : 13;
+          // chemistry rate: a calm crawl only near silence, a brisk churn for
+          // music and quiet songs alike (so the lines stay sharp at low energy)
+          const STEPS = rest > 0.5 ? 8 : 13;
           for (let i = 0; i < STEPS; i++) {
             pSim.use()
               .v2('uTexel', 1 / state.read.w, 1 / state.read.h)
