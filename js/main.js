@@ -53,6 +53,10 @@
     // Desktop shell (Electron): system audio is captured natively from the
     // OS — reword the browser-specific hint under the capture button.
     const desktop = !!(window.orphic && window.orphic.isElectron);
+    // Web target: tab/system audio sharing only works in desktop Chromium
+    // browsers; Safari & Firefox never return an audio track, so we block them
+    // up front rather than let the share picker silently no-op.
+    let webBlocked = false;
     if (desktop) {
       const subs = {
         darwin: 'to everything playing on this mac',
@@ -61,6 +65,30 @@
       };
       ui.systemBtn.querySelector('.sub').textContent =
         subs[window.orphic.platform] || 'to everything playing on this device';
+    } else {
+      const nudge = document.getElementById('overlay-nudge');
+      const uaData = navigator.userAgentData;
+      const chromium = uaData && Array.isArray(uaData.brands)
+        ? uaData.brands.some(b => /Chromium|Google Chrome|Microsoft Edge/i.test(b.brand))
+        : /\bChrome\//.test(navigator.userAgent) || /\bChromium\//.test(navigator.userAgent);
+
+      if (chromium) {
+        // works here — but still steer toward the native app for real
+        // whole-system audio and the smoother, picker-free experience
+        nudge.innerHTML =
+          'For whole-system audio (no tab picker) and the best experience, get the <b>desktop app</b>.';
+        nudge.hidden = false;
+      } else {
+        webBlocked = true;
+        ui.systemBtn.disabled = true;
+        ui.systemBtn.querySelector('.cta-label').textContent = 'audio sharing unavailable';
+        ui.systemBtn.querySelector('.sub').textContent = "this browser can't share audio";
+        nudge.classList.add('error');
+        nudge.innerHTML =
+          "Safari and Firefox don't let a page capture audio, so ORPHIC can't hear anything here. " +
+          '<b>Open this page in Chrome</b>, or download the desktop app for full system audio.';
+        nudge.hidden = false;
+      }
     }
 
     let toastTimer = 0;
@@ -388,7 +416,7 @@
 
     let starting = false; // a held/repeated start key must not open two captures
     async function startSystem() {
-      if (starting) return;
+      if (starting || webBlocked) return;
       starting = true;
       try {
         await engine.useSystemAudio();

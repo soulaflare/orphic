@@ -133,6 +133,30 @@ html, body {
 .cta .cta-label { font-size: 1.06rem; letter-spacing: 0.22em; text-transform: uppercase; font-weight: 300; }
 .cta .sub { font-size: 0.68rem; color: var(--dim); letter-spacing: 0.1em; }
 
+/* unsupported browser: button is inert, drop the glow + lift so it reads dead */
+.cta:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+  box-shadow: none;
+  background:
+    linear-gradient(rgba(8, 6, 18, 0.82), rgba(8, 6, 18, 0.82)) padding-box,
+    linear-gradient(110deg, #6b6b78, #4a4a55) border-box;
+}
+.cta:disabled::after { animation: none; opacity: 0; }
+.cta:disabled:hover { transform: none; box-shadow: none; }
+
+/* steer-to-desktop note under the hint; .error turns it into a hard warning */
+#overlay .nudge {
+  max-width: 32rem;
+  font-size: 0.74rem; line-height: 1.55; letter-spacing: 0.04em;
+  color: var(--fg); opacity: 0.66;
+  text-shadow: 0 1px 10px rgba(3, 2, 8, 0.9);
+  animation: rise 1.2s cubic-bezier(0.16, 1, 0.3, 1) 0.85s backwards;
+}
+#overlay .nudge b { font-weight: 500; opacity: 1; color: #8be9fd; }
+#overlay .nudge.error { opacity: 0.92; color: #ff9ab0; }
+#overlay .nudge.error b { color: #ff79c6; }
+
 #overlay .hint {
   font-size: 0.7rem; color: var(--fg); opacity: 0.5; letter-spacing: 0.14em;
   text-shadow: 0 1px 10px rgba(3, 2, 8, 0.9);

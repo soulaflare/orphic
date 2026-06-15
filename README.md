@@ -30,10 +30,18 @@ idle attract mode — a real scene breathing to a gentle synthetic groove.
 
 ## Run it — web
 
-Just open `index.html` in Chrome or Edge (double-click works — no server, no
-build, no dependencies) and hit **capture system audio**: share a tab and tick
-"Share tab audio" in the picker. (Firefox/Safari never return tab audio from
-the share picker — use the desktop app there.)
+Open `index.html` in **Chrome or Edge** (double-click works — no server, no
+build, no dependencies), hit **capture system audio**, share a tab, and tick
+"Share tab audio" in the picker.
+
+Other browsers won't break anything — the page still loads and draws. But
+Firefox and Safari never hand over tab audio, so the capture button just shows
+a small "no audio shared" note and there's nothing for the visuals to react to.
+For sound, stick to Chrome or Edge.
+
+**Want true whole-system audio with zero setup?** Use the desktop app (below).
+On macOS it captures everything playing on your machine — no picker, no
+tab-sharing, no virtual drivers.
 
 ## Run it — desktop (Electron)
 
@@ -46,10 +54,13 @@ drivers and no extra dependencies, via Chromium's OS loopback capture
 | Windows 10/11 | WASAPI loopback | none |
 | macOS | CoreAudio process taps | **macOS 14.2 (Sonoma) or later** — the app refuses to launch on anything older (process taps don't exist there, capture would be permanently silent); one-time "System Audio Recording" consent |
 
-Linux isn't officially supported right now — there's no packaged build and it's
-untested — but the code paths are all there (PulseAudio/PipeWire loopback
-behind an auto-set feature flag, MPRIS transport) and it should work from
-`npm run dev`.
+Clone the repo and you can build your own native app: `npm run dist:win` makes
+a Windows installer (whole-system audio via WASAPI loopback, no extra setup).
+
+Linux isn't officially supported — there's no packaged build and it's untested
+— but the code paths are all there (PulseAudio/PipeWire loopback behind an
+auto-set feature flag, MPRIS transport), so it runs from `npm run dev` and can
+likely be packaged by adding a Linux target. No promises.
 
 ```sh
 npm install
