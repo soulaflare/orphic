@@ -31,7 +31,7 @@ const [, , mode = 'test', ...args] = process.argv;
 // scene order = <script src="js/scene-*.js"> order in index.html
 function sceneList() {
   const html = fs.readFileSync(path.join(APP_ROOT, 'index.html'), 'utf8');
-  return [...html.matchAll(/js\/scene-(?!utils)([a-z]+)\.js/g)].map(m => m[1]);
+  return [...html.matchAll(/js\/scene-(?!utils)([a-z-]+)\.js/g)].map(m => m[1]);
 }
 
 function resolveScene(arg) {
