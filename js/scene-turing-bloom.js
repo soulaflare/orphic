@@ -100,6 +100,13 @@
     fragColor = vec4(1.0, B, 0.0, 1.0);
   }`;
 
+  // The render layer carries the FAST music reactivity — the chemistry is too
+  // slow to read a beat, so once the screen is full the response lives here:
+  //  (1) bass/kick pumps the relief depth + glow so the tissue swells & flares,
+  //  (2) treble glints sparkle on the fine worms.
+  //  (NB: a beat-driven ripple/UV-displacement and an energy-driven light sweep
+  //  were both tried and removed — they distract from the growth that is the
+  //  point of this scene. The ripple is parked for a future pulse/liquid scene.)
   const SHOW_FRAG = M.FRAG_HEADER + M.GLSL_LIB + M.GLSL_AUDIO + `
   uniform sampler2D uState;
   uniform sampler2D uField;
@@ -108,10 +115,14 @@
     float B = texture(uState, vUV).g;
     float Bx = texture(uState, vUV + vec2(uTexel.x, 0.0)).g - texture(uState, vUV - vec2(uTexel.x, 0.0)).g;
     float By = texture(uState, vUV + vec2(0.0, uTexel.y)).g - texture(uState, vUV - vec2(0.0, uTexel.y)).g;
-    vec3 n = normalize(vec3(-Bx * 6.0, -By * 6.0, 1.0));
+
+    // (1) bass relief pump — emboss deepens on the kick so highlights flare
+    float relief = 6.0 * (1.0 + uBassFast * 1.1);
+    vec3 n = normalize(vec3(-Bx * relief, -By * relief, 1.0));
+
     vec3 lightDir = normalize(vec3(0.5, 0.6, 0.8));
     float diff = max(dot(n, lightDir), 0.0);
-    float spec = pow(max(dot(reflect(-lightDir, n), vec3(0, 0, 1)), 0.0), 24.0);
+    float spec = pow(max(dot(reflect(-lightDir, n), vec3(0, 0, 1)), 0.0), 28.0);
 
     float m = smoothstep(0.05, 0.34, B);
     // local kill sets the regime, so each continent reads a touch different
@@ -120,8 +131,10 @@
     vec3 base = pal(hue, vec3(0.46), vec3(0.45), vec3(1.0), vec3(0.02, 0.36, 0.70));
     vec3 bg = vec3(0.012, 0.01, 0.03) + vec3(0.04, 0.02, 0.08) * (1.0 - length(vUV - 0.5));
     vec3 col = mix(bg, base * (0.45 + diff * 1.1), m);
-    col += spec * m * (0.5 + uTreble * 1.2);
-    col += base * uBeat * m * 0.30;
+    // (2) treble sparkle — fine glints twinkle with the highs
+    col += spec * m * (0.4 + uTreble * 2.2);
+    // (1) bass glow + beat bloom — the tissue flares on the low end and the hit
+    col += base * m * (uBassFast * 0.35 + uBeat * 0.30);
     col *= 0.8 + uLevel * 0.7;
     col *= 1.0 - uQuiet * 0.35;
     col *= 1.0 + uBurst * 0.5;
