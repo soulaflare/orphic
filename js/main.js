@@ -518,6 +518,15 @@
     const idleScenes = IDLE_NAMES
       .map(n => M.scenes.findIndex(d => d.name.includes(n)))
       .filter(i => i >= 0);
+    // scenes whose SILENT mode is the idle groove: the menu backdrops, plus a
+    // few that simply read better grooving than resting on their own hand-coded
+    // silence (murmuration's flock flies with real vigor under the groove, the
+    // way it looks when you escape to the menu). Kept separate from IDLE_NAMES
+    // so these don't join the menu attract rotation.
+    const GROOVE_NAMES = [...IDLE_NAMES, 'murmuration'];
+    const grooveScenes = GROOVE_NAMES
+      .map(n => M.scenes.findIndex(d => d.name.includes(n)))
+      .filter(i => i >= 0);
     const IDLE_CYCLE_SECONDS = 26;
     let idleT = Math.random() * 60, idleCycle = 0, idleNext = 1;
     // synthesize a gentle resting groove. Shared by the landing screen and by
@@ -607,9 +616,10 @@
       classifier.update(dt);
       const idle = engine.mode === 'none';
       if (idle) idleDrive(dt);
-      // silence fallback: when a live source goes truly silent, the scenes used
-      // as menu backdrops (idleScenes) ease back into the same groove they show
-      // on the landing screen instead of going blank. Run it here — symmetric
+      // silence fallback: when a live source goes truly silent, the groove
+      // scenes (grooveScenes — menu backdrops plus murmuration) ease back into
+      // the same groove they show on the landing screen / when you escape to
+      // the menu, instead of resting on their own. Run it here — symmetric
       // with idleDrive and BEFORE audioTex.update() — so the groove's synthetic
       // spectrum/waveform reach the audio textures too (aurora veil and stellar
       // nursery build their look from uSpectrogram); otherwise their silent mode
@@ -620,7 +630,7 @@
       // BPM action fires.
       const reallySilent = !idle && features.rawLevel < 0.06 && features.fluxRaw < 0.004;
       silenceT = reallySilent ? silenceT + dt : 0;
-      const grooving = silenceT > 0.4 && active && idleScenes.includes(activeIdx);
+      const grooving = silenceT > 0.4 && active && grooveScenes.includes(activeIdx);
       if (grooving) {
         silenceGain = Math.min(1, silenceGain + dt / 1.5); // ~1.5 s swell into the groove
         grooveFeatures(dt, silenceGain);
