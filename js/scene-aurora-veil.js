@@ -72,9 +72,27 @@
     col += a1 * c1 * rays * life;
     col += a2 * c2 * rays * life * 0.8;
 
+    // idle arc: in true silence the spectrum curtains vanish (curtain() ends in
+    // * eq), leaving a dead starfield. Restore the veil's stated rest state —
+    // one faint green arc bowing over the horizon, its crest undulating on uTime
+    // (uPhaseLevel crawls to a near-standstill in silence, like the stars it
+    // sits among). Fixed height: it never grows or pulses with audio, and uQuiet
+    // alone gates it so the spectrum curtains reclaim the sky the instant sound
+    // returns. Borrows the live veil's fold warp + ray combing so it reads as
+    // the same aurora resting, not a separate band.
+    float arcCrest = 0.20
+                   + 0.040 * sin(p.x * 5.0 + uTime * 0.16)
+                   + 0.022 * sin(p.x * 11.0 - uTime * 0.11)
+                   + (w1.y - 0.5) * 0.05;
+    float arcBow = 0.5 + 0.5 * cos((p.x - 0.5) * 3.14159); // one centered arc, not a flat band
+    float idleArc = (1.0 - smoothstep(arcCrest - 0.06, arcCrest, p.y)) // soft wavy crest
+                  * smoothstep(0.03, 0.10, p.y)                        // fade up out of the horizon
+                  * arcBow * rays * uQuiet;
+    col += a1 * idleArc * 0.16;
+
     // faint snowfield horizon catching the glow
     float ground = smoothstep(0.085, 0.075, p.y);
-    vec3 glow = a1 * (c1 + 0.15) * 0.22 * life;
+    vec3 glow = a1 * (c1 + 0.15) * 0.22 * life + a1 * idleArc * 0.10;
     col = mix(col, vec3(0.010, 0.012, 0.022) + glow, ground);
 
     float v = length(vUV - 0.5);
