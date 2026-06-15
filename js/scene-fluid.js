@@ -202,19 +202,25 @@
           }
           if (f.beat > 0.9) {
             beatCount++;
-            const n = 6;
-            const hue = (beatCount * 0.13 + f.centroid * 0.3) % 1;
-            // the ring breathes across beats so ink reaches the whole frame,
-            // not one orbit — but never collapses to centre: the middle stays
-            // a dark eye the ink billows around, only fed by swirl
-            const ring = 0.24 + 0.08 * Math.sin(beatCount * 0.53);
-            for (let i = 0; i < n; i++) {
-              const a = (i / n) * Math.PI * 2 + beatCount * 0.7;
-              const c = hsv((hue + i * 0.055) % 1, 0.85, 0.6 + f.bass * 0.4);
-              // offset from centre: a pure radial burst at one point is all
-              // divergence and the pressure solve would erase it
-              const ox = 0.5 + Math.cos(a) * ring, oy = 0.5 + Math.sin(a) * ring;
-              doSplat(ox, oy, Math.cos(a) * 380 * (0.4 + f.bass), Math.sin(a) * 380 * (0.4 + f.bass), c, 0.005 + f.bass * 0.005);
+            // above 100 BPM a ring detonation on every beat reads as strobing,
+            // so fire the pulse on every SECOND beat (half-time). beatCount keeps
+            // counting every beat so the sweep / black-jet schedules below stay
+            // on tempo.
+            if (f.bpm <= 100 || (beatCount & 1) === 0) {
+              const n = 6;
+              const hue = (beatCount * 0.13 + f.centroid * 0.3) % 1;
+              // the ring breathes across beats so ink reaches the whole frame,
+              // not one orbit — but never collapses to centre: the middle stays
+              // a dark eye the ink billows around, only fed by swirl
+              const ring = 0.24 + 0.08 * Math.sin(beatCount * 0.53);
+              for (let i = 0; i < n; i++) {
+                const a = (i / n) * Math.PI * 2 + beatCount * 0.7;
+                const c = hsv((hue + i * 0.055) % 1, 0.85, 0.6 + f.bass * 0.4);
+                // offset from centre: a pure radial burst at one point is all
+                // divergence and the pressure solve would erase it
+                const ox = 0.5 + Math.cos(a) * ring, oy = 0.5 + Math.sin(a) * ring;
+                doSplat(ox, oy, Math.cos(a) * 380 * (0.4 + f.bass), Math.sin(a) * 380 * (0.4 + f.bass), c, 0.005 + f.bass * 0.005);
+              }
             }
           }
           // THE SWEEP — a sustained assault, not scattershot. The jet keeps
