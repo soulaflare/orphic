@@ -41,9 +41,11 @@
     float e = 0.012;
     float air = (1.0 - smoothstep(hw - e, hw + e, dist)) * ends;
     // damping: a touch everywhere (decay to black on silence), more by the
-    // outer walls, strong at the lips so the open end radiates away
+    // outer walls, strong at the lips so the open end radiates away.
+    // the baseline sets the interior ring-down — how long the field shimmers
+    // after a kick — uniformly, so the standing-wave heights don't shift.
     float wall = smoothstep(hw - 0.05, hw, dist);
-    float damp = 0.0014 + 0.020 * wall + 0.060 * smoothstep(0.88, 0.99, y) + uRest;
+    float damp = 0.0030 + 0.020 * wall + 0.060 * smoothstep(0.88, 0.99, y) + uRest;
     // glottal source: a small inlet patch at bottom centre
     float src = exp(-dist * dist / (2.0 * 0.05 * 0.05))
               * exp(-pow((y - 0.10) / 0.05, 2.0));
