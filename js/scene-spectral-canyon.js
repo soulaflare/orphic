@@ -23,6 +23,7 @@
   uniform sampler2D uSG;
   uniform vec2 uTexel;
   uniform float uScroll; // rows scrolled / height — keeps noise glued to content
+  uniform float uTime, uQuiet;
   void main() {
     vec3 acc = vec3(0.0);
     float wsum = 0.0;
@@ -39,6 +40,12 @@
     vec2 wq = vec2(vUV.x * 12.0, (vUV.y + uScroll) * 24.0);
     float detail = (fbm(wq * vec2(3.0, 1.8)) - 0.5) * 0.14;
     float h = pow(s.r, 1.5) * (1.0 + detail);
+    // idle swell: slow drifting dunes so the silent canyon breathes on its own.
+    // Baked here so the march pays nothing; gated by uQuiet so it melts away the
+    // instant real sound returns and the spectrum reclaims the terrain.
+    float swell = sin(wq.x * 0.45 + uTime * 0.27) * cos(wq.y * 0.30 - uTime * 0.21)
+                + 0.45 * sin(wq.x * 0.9 - wq.y * 0.5 + uTime * 0.38);
+    h += swell * 0.045 * uQuiet;
     fragColor = vec4(h, s.g, s.b, 1.0);
   }`;
 
@@ -93,6 +100,20 @@
               * smoothstep(0.03, 0.22, y) * exp(-y * 1.3) * eq;
     sky += pal(hue + az * 0.35, vec3(0.45), vec3(0.45), vec3(1.0), vec3(0.0, 0.33, 0.67))
            * aur * (0.55 + uBeat * 0.6);
+
+    // idle aurora: tall drapes that sway on their own slow clock (uTime, not
+    // the music phase that freezes in silence) so the sky never goes fully
+    // dead. Low spatial frequency + a wide, soft band + a gentle horizontal
+    // sway lets them sweep gracefully instead of flickering as a hard noise
+    // threshold pops cells on and off. uQuiet fades them out the moment the
+    // spectrum-driven aurora takes over.
+    float icur = fbm3(vec2(az * 6.0 + uTime * 0.03,
+                           y * 0.6 + sin(az * 3.0 + uTime * 0.08) * 0.12));
+    float iaur = smoothstep(0.32, 0.95, icur);
+    iaur *= iaur * smoothstep(0.02, 0.30, y) * exp(-y * 1.4);
+    iaur *= 0.85 + 0.15 * sin(uTime * 0.18 + az * 2.0); // slow whole-veil breath
+    sky += pal(hue + az * 0.35 + 0.1, vec3(0.45), vec3(0.45), vec3(1.0), vec3(0.0, 0.33, 0.67))
+           * iaur * uQuiet * 0.20;
 
     // ground haze so the terrain silhouette reads against the sky
     sky += pal(hue + az * 0.5, vec3(0.4), vec3(0.4), vec3(1.0), vec3(0.0, 0.33, 0.67))
@@ -292,6 +313,8 @@
           pSmooth.use()
                  .v2('uTexel', 1 / sg.w, 1 / sg.h)
                  .f('uScroll', frames / sg.h)
+                 .f('uTime', t)
+                 .f('uQuiet', f.quiet)
                  .tex('uSG', sg.tex, 0);
           glc.draw(pSmooth, smoothT);
 
