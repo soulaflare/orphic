@@ -28,7 +28,11 @@
     float a = atan(uv.y, uv.x) / 6.28318 + 0.5 + uSpin;
 
     float c = chromaAt(a);
-    // rests close the flower toward a tight bud; harmony reopens it
+    // idle bloom: with no chord to shape it, a slow wave of openness rolls
+    // around the petals on uTime, so in silence the mandala keeps breathing and
+    // blooming instead of freezing to a dark bud.
+    float cIdle = 0.35 + 0.35 * sin(uTime * 0.5 + fract(a) * 18.849556); // 3 lobes circling the wheel
+    c = mix(c, max(c, cIdle), uQuiet);
     float petal = 0.30 - uQuiet * 0.14 + 0.58 * c;
     float pc = floor(fract(a) * 12.0);
     float noteHue = uKeyHue + mod(pc * 7.0, 12.0) / 12.0 * 0.75;
@@ -40,6 +44,9 @@
     // interior frequency ladder: ring radius = log frequency, lit live
     float rr = clamp(r / 1.4, 0.0, 1.0);
     float ring = specLog(rr);
+    // idle: a slow breathing ripple lights the interior ladder when silent
+    ring = mix(ring, max(ring, (0.45 + 0.4 * sin(rr * 26.0 - uTime * 1.2))
+                                * smoothstep(1.0, 0.12, rr)), uQuiet);
     float inside = smoothstep(petal, petal - 0.05, r);
     float lad = 0.45 + 0.55 * pow(abs(sin(rr * 52.0 - uPhaseLevel * 2.0)), 6.0);
     col += pal(uKeyHue + rr * 0.5, vec3(0.5), vec3(0.5), vec3(1.0), vec3(0.0, 0.33, 0.67))
@@ -104,6 +111,7 @@
             spinTarget += 1 / 24; // golden-ish step per beat
             beatLatch = 0.25;
           }
+          spinTarget += dt * 0.025 * f.quiet; // gentle self-rotation while quiet
           spin += (spinTarget - spin) * (1 - Math.exp(-dt * 5));
 
           pScene.use();
