@@ -87,7 +87,7 @@
   const DRAW_VERT = `#version 300 es
   precision highp float;
   uniform sampler2D uState;
-  uniform float uViewScale, uAspect, uPointScale, uLevel, uKeyHue, uSat;
+  uniform float uViewScale, uAspect, uPointScale, uLevel, uKeyHue, uSat, uIdle;
   out vec3 vCol;
   ${M.GLSL_COLOR}
   ${M.GLSL_NOISE}
@@ -101,9 +101,9 @@
     float depth = hash12(vec2(tc));
     // each agent is keyed to one spectrum slice — its band sparkling lights it
     float band = specLog(hash12(vec2(tc) * 1.7 + 3.0));
-    float shimmer = 0.45 + depth * 0.35 + band * 0.6;
+    float shimmer = 0.45 + depth * 0.35 + band * 0.6 + uIdle * 0.5; // glow at rest
     vCol = hsv(h, uSat, 1.0) * shimmer;
-    gl_PointSize = (1.6 + depth * 1.8 + uLevel * 2.0 + band * 2.2) * uPointScale;
+    gl_PointSize = (1.6 + depth * 1.8 + uLevel * 2.0 + band * 2.2 + uIdle * 1.5) * uPointScale;
   }`;
   const DRAW_FRAG = `#version 300 es
   precision highp float;
@@ -200,16 +200,23 @@
           const tide = 0.5 + 0.5 * Math.sin(f.phaseLevel * 0.14);
           const J = 0.5 + tide * 0.6 + f.harmonic * 0.3;
           // K NEGATIVE = the active phase wave (perpetual rotation); louder
-          // music drives it harder — this is the energy handle, not collapse
-          const K = -0.1 - f.level * 0.9 - f.beat * 0.3;
+          // music drives it harder — this is the energy handle, not collapse.
+          // In silence hold a gentle baseline so the swarm settles into a slowly
+          // rotating rainbow disc (its prettiest regime) instead of an unlit,
+          // expanding cloud.
+          const q = Math.min(1, f.quiet);
+          const K = -0.1 - f.level * 0.9 - f.beat * 0.3 - q * 0.35;
           const phi = (f.centroid - 0.45) * 0.9;        // mild chimera drift
           const omega = 0.4 + f.treble * 1.2;           // internal-clock spin
-          // global rigid rotation, audible as the whole wheel turning
-          spin = 0.15 + f.level * 0.9 + f.mid * 0.4;
+          // global rigid rotation, audible as the whole wheel turning; keeps a
+          // slow idle turn at rest so the disc never stalls
+          spin = 0.15 + f.level * 0.9 + f.mid * 0.4 + q * 0.25;
 
           if (f.beat > 0.9) stir = 0.4 + f.bassFast * 0.7;
           stir *= Math.pow(0.5, dt / 0.14);
-          const disperse = f.quiet * 0.5;               // rests scatter to dark
+          // at rest, breathe the disc slowly in and out on its own clock rather
+          // than scattering it outward into the dark
+          const disperse = q * 0.18 * Math.sin(t * 0.25);
 
           pUpdate.use()
             .f('uDt', Math.min(dt, 0.033) * 1.25)
@@ -225,7 +232,9 @@
           const f = audio.f;
           const dpr = Math.min(window.devicePixelRatio || 1, 2);
 
-          const fade = 0.86 - f.quiet * 0.30 + f.level * 0.05;
+          // longer orbital trails at rest so the slow rainbow disc leaves
+          // luminous streaks instead of fading toward the dark
+          const fade = 0.86 + f.quiet * 0.05 + f.level * 0.05;
           pFade.use().f('uFade', Math.min(0.93, fade)).tex('uPrev', canvas.read.tex, 0);
           glc.draw(pFade, canvas.write);
 
@@ -235,6 +244,7 @@
             .f('uViewScale', 0.5).f('uAspect', glc.width / glc.height)
             .f('uPointScale', dpr).f('uLevel', f.level)
             .f('uKeyHue', keyHue).f('uSat', 0.78 + f.flatness * 0.18)
+            .f('uIdle', f.quiet)
             .tex('uState', state.read.tex, 0);
           M.spectrumUniforms(pDraw, audio, 1);
           pDraw.bind();
