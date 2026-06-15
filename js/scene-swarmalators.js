@@ -43,10 +43,12 @@
     vec2 xi = s.xy; float th = s.z; float om = s.w;
 
     vec2 dx = vec2(0.0);
+    vec2 com = vec2(0.0);
     float dth = 0.0;
     for (int j = 0; j < ${N}; j++) {
       ivec2 tc = ivec2(j % ${DIM}, j / ${DIM});
       vec4 o = texelFetch(uState, tc, 0);
+      com += o.xy;
       vec2 r = o.xy - xi;
       float d2 = dot(r, r) + 3.0e-3;
       float d = sqrt(d2);
@@ -57,6 +59,7 @@
     }
     float inv = 1.0 / float(${N});
     dx *= inv;
+    com *= inv;
     dth = dth * inv * uK + om * uOmega + uSpin;
 
     // a gentle rigid swirl makes the active-phase-wave rotation legible
@@ -66,8 +69,9 @@
     dx += (xi / rr) * uStir;
     // only true rests push the swarm apart into the dark
     dx += (xi / rr) * uDisperse;
-    // weak centering cancels the slow translational drift so it stays framed
-    dx += -xi * uCenter;
+    // pin the centroid (not each body) so the asymmetric phase-coupling drift
+    // is cancelled by a pure translation — keeps it framed without contracting
+    dx += -com * uCenter;
 
     float sp = length(dx);
     if (sp > 8.0) dx *= 8.0 / sp;
@@ -113,7 +117,7 @@
   }`;
 
   // composite: atmospheric nebula + trails + bloom, tonemapped
-  const POST_FRAG = M.FRAG_HEADER + M.GLSL_LIB + M.GLSL_AUDIO + `
+  const POST_FRAG = M.FRAG_HEADER + M.GLSL_LIB + M.GLSL_AUDIO + M.GLSL_EMBERS + `
   uniform sampler2D uCanvas, uBloom;
   uniform vec2 uRes;
   uniform float uKeyHue, uAspect;
@@ -126,9 +130,29 @@
     bg *= smoothstep(1.1, 0.1, r);
     bg += pal(uKeyHue, vec3(0.04), vec3(0.05), vec3(1.0), vec3(0.0, 0.3, 0.6))
           * exp(-r * r * 3.0) * (0.5 + uBass * 1.4 + uBeat * 0.6);
-    float neb = fbm(p * 2.3 + uPhaseLevel * 0.05);
+
+    // the cloud slowly wheels WITH the swarm: domain-rotate the fbm so the
+    // backdrop reads as the medium the disc is stirring, not a flat picture.
+    // two octaves counter-rotate slightly for a sense of churning depth
+    float a = uPhaseLevel * 0.05;
+    mat2 rot = mat2(cos(a), -sin(a), sin(a), cos(a));
+    vec2 q = rot * p;
+    float neb = fbm(q * 2.3) * 0.62 + fbm(q * 5.1 - uPhaseLevel * 0.03) * 0.38;
     bg += pal(uKeyHue + 0.3, vec3(0.02), vec3(0.03), vec3(1.0), vec3(0.0, 0.2, 0.4))
-          * neb * smoothstep(1.0, 0.2, r) * 0.5;
+          * neb * smoothstep(1.0, 0.2, r) * 1.1;
+
+    // a soft halo well around the disc's rim — the swarm sits IN a pool of
+    // light rather than on dead black; breathes gently with the bass
+    float halo = exp(-pow((r - 0.42) * 2.3, 2.0));
+    bg += pal(uKeyHue + 0.12, vec3(0.025), vec3(0.035), vec3(1.0), vec3(0.0, 0.33, 0.66))
+          * halo * (0.34 + uBass * 0.5 + uBeat * 0.25);
+
+    // drifting star dust gives the void depth and quiet life — kept to the
+    // dark surround so it never clutters the bodies, twinkles with treble
+    float dust = embers(vUV, uAspect, 26.0, 0.006, 0.10, 7.0);
+    vec3 dustCol = vec3(0.55, 0.66, 1.0) * 0.5
+                 + pal(uKeyHue, vec3(0.5), vec3(0.5), vec3(1.0), vec3(0.0, 0.33, 0.67)) * 0.5;
+    bg += dustCol * dust * (0.13 + uTreble * 0.12) * smoothstep(0.18, 0.7, r);
 
     vec3 trails = texture(uCanvas, vUV).rgb;
     vec3 bloom = texture(uBloom, vUV).rgb;
@@ -191,7 +215,7 @@
             .f('uDt', Math.min(dt, 0.033) * 1.25)
             .f('uJ', J).f('uK', K).f('uAttr', attr).f('uRep', rep)
             .f('uPhi', phi).f('uOmega', omega).f('uSpin', spin * dt)
-            .f('uStir', stir).f('uDisperse', disperse).f('uCenter', 0.11)
+            .f('uStir', stir).f('uDisperse', disperse).f('uCenter', 0.6)
             .tex('uState', state.read.tex, 0);
           glc.draw(pUpdate, state.write);
           state.swap();
