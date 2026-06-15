@@ -1,11 +1,32 @@
 # ORPHIC — audio-reactive generative visualizer
 
+<p align="center">
+  <img src="docs/assets/banner.jpg" alt="ORPHIC — sync swarm scene" width="100%">
+</p>
+
 Sixteen GPU pattern simulations that react live to **whatever's playing**
 (Spotify, YouTube, anything), with automatic speech-vs-music detection that
 re-tunes the visuals for voice. Runs two ways: as a desktop app (Electron)
 that captures **everything playing on the machine** natively, or as a
 zero-dependency web page. Until capture starts, the landing screen plays an
 idle attract mode — a real scene breathing to a gentle synthetic groove.
+
+## Gallery
+
+<table>
+  <tr>
+    <td width="33%"><img src="docs/assets/hyperdrive.jpg" alt="hyperdrive · neon tunnel" width="100%"><br><sub><b>hyperdrive</b> · neon tunnel</sub></td>
+    <td width="33%"><img src="docs/assets/physarum.jpg" alt="physarum · living network" width="100%"><br><sub><b>physarum</b> · living network</sub></td>
+    <td width="33%"><img src="docs/assets/chaos.jpg" alt="chaos cathedral · de jong attractor" width="100%"><br><sub><b>chaos cathedral</b> · de jong attractor</sub></td>
+  </tr>
+  <tr>
+    <td width="33%"><img src="docs/assets/lenia.jpg" alt="lenia · alien garden" width="100%"><br><sub><b>lenia</b> · alien garden</sub></td>
+    <td width="33%"><img src="docs/assets/aurora.jpg" alt="aurora veil · spectral curtains" width="100%"><br><sub><b>aurora veil</b> · spectral curtains</sub></td>
+    <td width="33%"><img src="docs/assets/stellar.jpg" alt="stellar nursery · ember nebula" width="100%"><br><sub><b>stellar nursery</b> · ember nebula</sub></td>
+  </tr>
+</table>
+
+<sub>Six of seventeen scenes, captured live to a synthetic groove. The full set is in the in-app pattern panel (press <code>s</code>).</sub>
 
 ## Run it — web
 
