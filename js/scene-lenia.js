@@ -68,7 +68,7 @@
   uniform sampler2D uState;
   uniform sampler2D uDensity;          // coarse local coverage field
   uniform vec2 uTexel;
-  uniform float uMu, uSigma, uDtL, uHab, uKillOut, uDensLo, uDensHi, uGlobalEro;
+  uniform float uMu, uSigma, uDtL, uHab, uKillOut, uDensLo, uDensHi, uLocalEro, uGlobalEro;
   const int R = ${R};
   void main() {
     vec3 s = texture(uState, vUV).rgb;
@@ -88,14 +88,16 @@
     float u = sum / wsum;
 
     float growth = 2.0 * exp(-pow((u - uMu) / uSigma, 2.0) * 0.5) - 1.0;
-    // gentle LOCAL throttle: ease *growth* (never decay) down only where the
-    // wide NEIGHBOURHOOD is already very crowded, so structures keep open,
-    // mazey interiors instead of packing into solid lumps. It is permissive on
-    // purpose — clashing creatures must still be able to merge and grow (that's
-    // the whole point); the real anti-carpet guard is the global backstop below.
+    // LOCAL lifecycle, driven by the wide-neighbourhood density. A region that
+    // has just grown dense (a colony) gets its growth throttled AND a gentle
+    // erosion, so it grows, peaks, then DISPERSES back to void over a few
+    // seconds — then new clashes bloom elsewhere. Because it is local, each
+    // colony runs its own clock; the dish never dies all at once and never
+    // packs into a static carpet. Below densLo (lone creatures, fresh clashes)
+    // nothing is throttled or eroded, so they grow freely and merge.
     float localDens = texture(uDensity, vUV).r;
-    float throttle = smoothstep(uDensLo, uDensHi, localDens);
-    if (growth > 0.0) growth *= 1.0 - throttle;
+    float dense = smoothstep(uDensLo, uDensHi, localDens);
+    if (growth > 0.0) growth *= 1.0 - 0.8 * dense;
     A = clamp(A + uDtL * growth, 0.0, 1.0);
 
     // drifting habitat: life is only permitted inside slow-flowing continents;
@@ -110,10 +112,14 @@
     float kill = smoothstep(habThr, habThr - 0.13, habn);
     A = clamp(A - kill * uKillOut * uDtL, 0.0, 1.0);
 
-    // global backstop: a carpet can never hold. Only above a ceiling coverage
-    // does the CPU raise uGlobalEro, biting the densest tissue (high u) until
-    // the dish relents — rare, since normal clash-blooms sit well below it.
-    A = clamp(A - uGlobalEro * smoothstep(0.08, 0.16, u) * uDtL, 0.0, 1.0);
+    // local dispersal: a grown colony erodes itself back toward void over a few
+    // seconds (this is what makes a colony bloom then break up instead of
+    // either dying instantly or locking into a carpet). Its rate sets the
+    // colony lifespan.
+    A = clamp(A - uLocalEro * dense * uDtL, 0.0, 1.0);
+
+    // global safety only for a true full-screen runaway — normally never fires.
+    A = clamp(A - uGlobalEro * uDtL, 0.0, 1.0);
 
     fragColor = vec4(A, u, 0.0, 1.0);
   }`;
@@ -294,16 +300,15 @@
           // opens it a touch).
           uHab = 0.30 + 0.03 * Math.sin(f.phaseLevel * 0.11)
                + f.quiet * 0.08 - f.level * 0.03;
-          // 2) A gentle LOCAL throttle keeps any one neighbourhood from packing
-          // solid, but is permissive enough that creatures still clash and merge
-          // into growing chains (the whole point). densLo/densHi ramp the local
-          // throttle; set high so merging is allowed.
-          const densLo = 0.105 - f.quiet * 0.020;
+          // 2) The LOCAL lifecycle (in the shader). densLo/densHi set the
+          // density at which a region counts as a "grown colony" and starts to
+          // throttle + disperse; uLocalEro sets the dispersal rate (≈ colony
+          // lifespan). Below densLo, fresh clashes grow and merge freely.
+          const densLo = 0.100 - f.quiet * 0.02;
+          const localEro = 0.25;
 
-          // 3) A global backstop ONLY above a ceiling — guarantees the rare
-          // runaway can never lock into a full carpet, without touching the
-          // normal clash-blooms that live well below it.
-          const globalEro = Math.max(0, mass - 0.15) * 9.0;
+          // 3) Global safety: only a true screen-filling runaway is trimmed.
+          const globalEro = Math.max(0, mass - 0.32) * 5.0;
 
           // births ride the beat — and each one sows a PAIR of orbia right next
           // to each other so they immediately clash and grow something. The pair
@@ -343,7 +348,8 @@
           pSim.v2('uTexel', 1 / state.read.w, 1 / state.read.h)
               .f('uMu', 0.15).f('uSigma', 0.015).f('uDtL', dtL)
               .f('uHab', uHab).f('uKillOut', 1.5)
-              .f('uDensLo', densLo).f('uDensHi', densLo + 0.085).f('uGlobalEro', globalEro)
+              .f('uDensLo', densLo).f('uDensHi', densLo + 0.050)
+              .f('uLocalEro', localEro).f('uGlobalEro', globalEro)
               .tex('uState', state.read.tex, 0).tex('uDensity', densT.tex, 1);
           glc.draw(pSim, state.write);
           state.swap();
