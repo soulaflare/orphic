@@ -607,6 +607,26 @@
       classifier.update(dt);
       const idle = engine.mode === 'none';
       if (idle) idleDrive(dt);
+      // silence fallback: when a live source goes truly silent, the scenes used
+      // as menu backdrops (idleScenes) ease back into the same groove they show
+      // on the landing screen instead of going blank. Run it here — symmetric
+      // with idleDrive and BEFORE audioTex.update() — so the groove's synthetic
+      // spectrum/waveform reach the audio textures too (aurora veil and stellar
+      // nursery build their look from uSpectrogram); otherwise their silent mode
+      // wouldn't match their menu background. rawLevel/fluxRaw are read from the
+      // real input (the groove never writes them) so this can't feed back on
+      // itself, and the media play/pause inference below reads rawLevel too, so
+      // it still sees the genuine signal. The groove's beat stays < 0.9, so no
+      // BPM action fires.
+      const reallySilent = !idle && features.rawLevel < 0.06 && features.fluxRaw < 0.004;
+      silenceT = reallySilent ? silenceT + dt : 0;
+      const grooving = silenceT > 0.4 && active && idleScenes.includes(activeIdx);
+      if (grooving) {
+        silenceGain = Math.min(1, silenceGain + dt / 1.5); // ~1.5 s swell into the groove
+        grooveFeatures(dt, silenceGain);
+      } else {
+        silenceGain = 0; // sound is back: hand straight back to the live signal
+      }
       audioTex.update();
       // on the landing screen the idle groove breathes through the cursor too
       if (cursor) cursor.frame(dt, features, classifier.mode);
@@ -679,24 +699,6 @@
             }
           }
         } else { pendingMode = null; pendingModeT = 0; }
-      }
-
-      // silence fallback: when a live source goes truly silent, the scenes used
-      // as menu backdrops (idleScenes) ease back into the same groove they show
-      // on the landing screen instead of going blank — the way they settle when
-      // you press escape to the menu. Every other scene hand-builds its own rest
-      // state and is left alone. rawLevel/fluxRaw are read from the real input
-      // (the groove never writes them), so this can't feed back on itself; the
-      // groove's beat stays < 0.9 so no BPM action fires. Applied here, AFTER
-      // the media play/pause inference above, so that reads the genuine signal.
-      const reallySilent = !idle && features.rawLevel < 0.06 && features.fluxRaw < 0.004;
-      silenceT = reallySilent ? silenceT + dt : 0;
-      const grooving = silenceT > 0.4 && active && idleScenes.includes(activeIdx);
-      if (grooving) {
-        silenceGain = Math.min(1, silenceGain + dt / 1.5); // ~1.5 s swell into the groove
-        grooveFeatures(dt, silenceGain);
-      } else {
-        silenceGain = 0; // sound is back: hand straight back to the live signal
       }
 
       // grooving scenes read as their landing-screen selves, so present them
