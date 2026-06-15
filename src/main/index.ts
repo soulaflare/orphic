@@ -68,6 +68,9 @@ function registerAppProtocol(): void {
       const res = await net.fetch(pathToFileURL(file).toString())
       const headers = new Headers(res.headers)
       headers.set('Content-Security-Policy', CSP)
+      // never cache renderer assets: they're plain classic scripts read off
+      // disk, so a window reload must always pick up the latest edit
+      headers.set('Cache-Control', 'no-store')
       return new Response(res.body, { status: res.status, headers })
     } catch {
       return new Response('Not Found', { status: 404 })

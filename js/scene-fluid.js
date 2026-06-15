@@ -66,7 +66,7 @@
     force /= length(force) + 1e-4;
     force *= uStrength * C * vec2(1, -1);
     vec2 vel = texture(uVelocity, vUV).xy + force * uDt;
-    fragColor = vec4(clamp(vel, -1000.0, 1000.0), 0.0, 1.0);
+    fragColor = vec4(clamp(vel, -3800.0, 3800.0), 0.0, 1.0);
   }`;
 
   const DIVERGENCE = H + `
@@ -132,6 +132,7 @@
       };
       let vel = null, dye = null, curlT = null, divT = null, press = null;
       let beatCount = 0, emitterAng = 0, primed = false;
+      let atkAngle = 0, atkBeats = 0, atkResting = false;  // sustained-sweep state
 
       function alloc(w, h) {
         const sw = Math.max(2, w >> 2), sh = Math.max(2, h >> 2);
@@ -216,6 +217,35 @@
               doSplat(ox, oy, Math.cos(a) * 380 * (0.4 + f.bass), Math.sin(a) * 380 * (0.4 + f.bass), c, 0.005 + f.bass * 0.005);
             }
           }
+          // THE SWEEP — a sustained assault, not scattershot. The jet keeps
+          // coming from ONE side for a run of beats (faster, longer), dragging
+          // the whole body that way; then control hands off to a new side; and
+          // now and then a lull lets the flow relax back toward the middle.
+          // Ink driven off the far edge is the sink that prevents saturation.
+          if (f.beat > 0.9) {
+            if (--atkBeats <= 0) {
+              // start a new phase: ~35% a lull, else a fresh attack direction
+              atkResting = Math.random() < 0.35;
+              if (atkResting) {
+                atkBeats = 5 + Math.floor(Math.random() * 5);     // 5–9 beats of calm
+              } else {
+                atkAngle = Math.random() * Math.PI * 2;           // direction the jet pushes
+                atkBeats = 24 + Math.floor(Math.random() * 16);   // hold one side 24–39 beats
+              }
+            }
+            // fire only every 6th beat so jets begin slowly and deliberately,
+            // one direction at a time — not a swarm from every corner at once
+            if (!atkResting && beatCount % 6 === 0) {
+              const ang = atkAngle + (Math.random() - 0.5) * 0.22; // tight jitter → one direction
+              const cs = Math.cos(ang), sn = Math.sin(ang);
+              const jx = 0.5 - cs * 0.45, jy = 0.5 - sn * 0.45;    // enter from the trailing edge
+              const sp = 1700 * (0.3 + f.bass * 1.6);              // gentle when quiet, blistering on hits
+              // velocity-only "clear" jet: sweeps the existing clean ink across
+              // rather than smearing broad new dye — the visible ink stays the
+              // crisp emitter orbs and streaks
+              doSplat(jx, jy, cs * sp, sn * sp, [0.0, 0.0, 0.0], 0.025);
+            }
+          }
           // every ~7 beats, black ink shoots in from the rim: a hard inward
           // jet carrying negative dye — it carves a dark finger through the
           // clouds and swirls with the flow like ink in water
@@ -231,10 +261,9 @@
                     [-0.55, -0.55, -0.55], 0.003);
           }
           if (f.onset > 0.9 && f.beat <= 0.9) {
-            // off-centre like the beat ring — the middle stays a dark eye
-            const oa = Math.random() * Math.PI * 2;
-            const or = 0.18 + Math.random() * 0.16;
-            const x = 0.5 + Math.cos(oa) * or, y = 0.5 + Math.sin(oa) * or;
+            // jets fire from anywhere — corners included — in a random
+            // direction, so they sweep in, compete, and drag the ink their way
+            const x = 0.15 + Math.random() * 0.7, y = 0.15 + Math.random() * 0.7;
             const a = Math.random() * Math.PI * 2;
             const c = hsv((f.centroid * 0.8 + 0.55) % 1, 0.9, 0.4);
             doSplat(x, y, Math.cos(a) * 280, Math.sin(a) * 280, c, 0.002);
