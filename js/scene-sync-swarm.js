@@ -101,9 +101,9 @@
     float depth = hash12(vec2(tc));
     // each agent is keyed to one spectrum slice — its band sparkling lights it
     float band = specLog(hash12(vec2(tc) * 1.7 + 3.0));
-    float shimmer = 0.45 + depth * 0.35 + band * 0.6 + uIdle * 0.5; // glow at rest
+    float shimmer = 0.45 + depth * 0.35 + band * 0.6 + uIdle * 0.22; // faint glow at rest
     vCol = hsv(h, uSat, 1.0) * shimmer;
-    gl_PointSize = (1.6 + depth * 1.8 + uLevel * 2.0 + band * 2.2 + uIdle * 1.5) * uPointScale;
+    gl_PointSize = (1.6 + depth * 1.8 + uLevel * 2.0 + band * 2.2 + uIdle * 0.7) * uPointScale;
   }`;
   const DRAW_FRAG = `#version 300 es
   precision highp float;
@@ -214,9 +214,10 @@
 
           if (f.beat > 0.9) stir = 0.4 + f.bassFast * 0.7;
           stir *= Math.pow(0.5, dt / 0.14);
-          // at rest, breathe the disc slowly in and out on its own clock rather
-          // than scattering it outward into the dark
-          const disperse = q * 0.18 * Math.sin(t * 0.25);
+          // at rest, let the disc drift wider and breathe slowly on its own
+          // clock (net outward) — so when music returns and the push stops,
+          // attraction snaps it back to a tight bright core
+          const disperse = q * (0.12 + 0.1 * Math.sin(t * 0.25));
 
           pUpdate.use()
             .f('uDt', Math.min(dt, 0.033) * 1.25)
