@@ -28,7 +28,7 @@
   // a=constriction (noise-injection site). A vertical tube, pinched at the
   // vowel's constriction, closed at the glottis, radiating at the lips.
   const MASK_FRAG = M.FRAG_HEADER + `
-  uniform float uConHeight, uConTight, uLipOpen;
+  uniform float uConHeight, uConTight, uLipOpen, uRest;
   void main() {
     float x = vUV.x, y = vUV.y, cx = 0.5;
     float dC = y - uConHeight;
@@ -43,7 +43,7 @@
     // damping: a touch everywhere (decay to black on silence), more by the
     // outer walls, strong at the lips so the open end radiates away
     float wall = smoothstep(hw - 0.05, hw, dist);
-    float damp = 0.0014 + 0.020 * wall + 0.060 * smoothstep(0.88, 0.99, y);
+    float damp = 0.0014 + 0.020 * wall + 0.060 * smoothstep(0.88, 0.99, y) + uRest;
     // glottal source: a small inlet patch at bottom centre
     float src = exp(-dist * dist / (2.0 * 0.05 * 0.05))
               * exp(-pow((y - 0.10) / 0.05, 2.0));
@@ -143,6 +143,7 @@
       let keyHue = 0.55;
       let conHeight = 0.5, conTight = 0.6, lipOpen = 0.3;
       let glottPhase = 0;
+      let life = 0.22;               // eased brightness — swells in, lingers out
 
       return {
         resize() {},
@@ -159,8 +160,11 @@
           conTight  += ((0.60 - 0.40 * f.f1) - conTight) * k;
           lipOpen   += ((0.15 + 0.45 * f.f1) - lipOpen) * k;
 
+          // rest: during sustained silence, damp the whole field harder so it
+          // settles to black instead of shimmering on (active speech is untouched)
           pMask.use()
-               .f('uConHeight', conHeight).f('uConTight', conTight).f('uLipOpen', lipOpen);
+               .f('uConHeight', conHeight).f('uConTight', conTight).f('uLipOpen', lipOpen)
+               .f('uRest', 0.006 * f.quiet);
           glc.draw(pMask, maskT);
 
           // leapfrog substeps, each advancing the glottal pulse train
@@ -172,7 +176,12 @@
             // zero-mean glottal pulse: a rich-harmonic inlet flow that rings
             // every tube resonance (the formants) rather than a single tone
             const pulse = (glottPhase < duty ? 1.0 : 0.0) - duty;
-            let src = pulse * (0.16 + 0.45 * f.level) * f.voiced;
+            // voiced gate with a deadzone: ignore marginal/lingering voicing, and
+            // scale the drive by loudness so quiet passages stop humming the cavity.
+            // the old always-on 0.16 floor is gone — silence no longer fires.
+            const vg = Math.max(0, Math.min(1, (f.voiced - 0.38) / 0.30));
+            const gate = vg * vg * (3 - 2 * vg);
+            let src = pulse * (0.03 + 0.58 * f.level) * gate;
             if (i === 0) src += f.onset * 0.5 + f.burst * 0.8; // consonant/return puff
             // unvoiced turbulence: sibilant hiss born at the constriction
             const noise = (0.10 + 0.5 * f.flux) * Math.max(0, 1 - f.voiced)
@@ -185,11 +194,15 @@
             glc.draw(pSim, state.write);
             state.swap();
           }
+
+          // ease brightness toward its target: rise readily, fall slowly, so the
+          // body breathes instead of flashing on every onset (asymmetric attack)
+          const lifeTarget = Math.min(2.0, 0.22 + f.voiced * 1.0 + f.level * 0.6
+                              + f.onset * 0.6 + f.burst * 1.2) * (1 - f.quiet * 0.6);
+          const lk = 1 - Math.exp(-dt * (lifeTarget > life ? 7 : 2.5));
+          life += (lifeTarget - life) * lk;
         },
         render(out, audio, t) {
-          const f = audio.f;
-          const life = Math.min(2.0, 0.22 + f.voiced * 1.0 + f.level * 0.6
-                              + f.onset * 0.6 + f.burst * 1.2) * (1 - f.quiet * 0.6);
           pShow.use()
                .tex('uState', state.read.tex, 0).tex('uMask', maskT.tex, 1)
                .v2('uRes', glc.width, glc.height).v2('uTexel', 1 / W, 1 / H)
