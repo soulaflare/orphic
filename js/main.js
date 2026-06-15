@@ -156,9 +156,10 @@
     // for SECS simulated seconds (default 10), logging "SHOT T <frames>"
     // every 10 sim-seconds so a driver can take timed captures — see
     // .claude/skills/run-orphic
-    const shotMatch = location.hash.match(/^#shot-(\d+)(?:-(\d+))?$/);
+    const shotMatch = location.hash.match(/^#shot-(\d+)(?:-(\d+))?(-q)?$/);
     if (shotMatch) {
       const idx = parseInt(shotMatch[1], 10);
+      const SILENT = !!shotMatch[3]; // #shot-N-SECS-q → drive the scene's silent/idle path
       const limit = (parseInt(shotMatch[2], 10) || 10) * 60;
       const dpr = 1;
       glc.resize(Math.round(canvas.clientWidth * dpr), Math.round(canvas.clientHeight * dpr));
@@ -219,6 +220,15 @@
         for (let i = 0; i < td.length; i++) {
           const ph = i / td.length * 6.28318 * 16;
           td[i] = 0.4 * Math.sin(ph + st * 8) + 0.2 * Math.sin(ph * 2.7 + st * 5);
+        }
+        if (SILENT) {
+          // drive the scene's true silent path: no level, no onsets, quiet=1,
+          // and a decaying spectrum/waveform so the spectrogram empties out
+          f.level = f.bass = f.bassFast = f.mid = f.treble = f.flux = 0;
+          f.onset = f.beat = f.harmonic = f.percussive = 0;
+          f.beatConf = 0; f.voiced = 0; f.quiet = 1; f.burst = 0;
+          for (let i = 0; i < fd.length; i++) fd[i] = 0;
+          for (let i = 0; i < td.length; i++) td[i] = 0;
         }
         audioTex.update();
         if (scene.update) scene.update(dt, audio, st);

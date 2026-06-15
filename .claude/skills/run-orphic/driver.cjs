@@ -5,10 +5,12 @@
  *     → runs the app's #test self-test (compile+run every scene once),
  *       prints SCENE OK/FAIL lines, exit 0 iff all scenes pass.
  *
- *   npx electron .claude/skills/run-orphic/driver.cjs shot <scene> [secs] [outdir]
+ *   npx electron .claude/skills/run-orphic/driver.cjs shot <scene> [secs] [outdir] [silent]
  *     → runs scene <scene> (index, or unique name substring) in #shot mode
  *       with synthetic audio for [secs] simulated seconds (default 10),
  *       saving a PNG every 10 sim-seconds to [outdir] (default /tmp/orphic-shots).
+ *       Add the word `silent` to drive the scene's quiet/idle path instead of
+ *       synthetic music — the only way to verify silent-mode looks.
  *
  *   npx electron .claude/skills/run-orphic/driver.cjs repl
  *     → loads the real app (idle attract mode — no audio source headless)
@@ -92,9 +94,13 @@ app.whenReady().then(() => {
     setTimeout(() => { console.error('TIMEOUT'); app.exit(3); }, 60000);
 
   } else if (mode === 'shot') {
-    const { idx, name } = resolveScene(args[0] ?? '0');
-    const secs = Math.max(10, +(args[1] || 10));
-    const outdir = args[2] || '/tmp/orphic-shots';
+    // a `silent` token anywhere drives the scene's quiet/idle path (no level,
+    // no onsets, quiet=1, empty spectrum) so silent-mode looks can be verified
+    const silent = args.includes('silent');
+    const pos = args.filter(a => a !== 'silent');
+    const { idx, name } = resolveScene(pos[0] ?? '0');
+    const secs = Math.max(10, +(pos[1] || 10));
+    const outdir = pos[2] || '/tmp/orphic-shots';
     const label = f => `${outdir}/${String(idx).padStart(2, '0')}-${name}-t${String(f / 60).padStart(3, '0')}.png`;
     console.log(`scene ${idx} (${name}) for ${secs} sim-seconds`);
     onConsole(win, msg => {
@@ -105,7 +111,7 @@ app.whenReady().then(() => {
           .then(() => app.exit(0));
       } else console.log('PAGE: ' + msg); // scene debug telemetry flows through
     });
-    win.loadURL(`${INDEX}#shot-${idx}-${secs}`);
+    win.loadURL(`${INDEX}#shot-${idx}-${secs}${silent ? '-q' : ''}`);
     // shot mode runs ~8 sim-frames per rAF tick → ~8x faster than real time
     setTimeout(() => { console.error('TIMEOUT'); app.exit(3); }, 30000 + secs * 4000);
 
@@ -133,7 +139,7 @@ app.whenReady().then(() => {
     rl.on('close', () => chain.then(() => app.exit(0)));
 
   } else {
-    console.error('usage: electron driver.cjs test | shot <scene> [secs] [outdir] | repl');
+    console.error('usage: electron driver.cjs test | shot <scene> [secs] [outdir] [silent] | repl');
     app.exit(2);
   }
 });

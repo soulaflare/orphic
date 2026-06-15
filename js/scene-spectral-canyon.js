@@ -62,7 +62,10 @@
   }
 
   const float WIDTH = 6.0;   // lateral half-extent (frequency axis)
-  const float DEPTH = 24.0;  // view distance (time axis)
+  const float DEPTH = 30.0;  // view distance (time axis) — newest sounds erupt here
+  // terrain dissolves COMPLETELY into the horizon atmosphere before this, so the
+  // geometric far edge of the plane is never visible; the march stops here too.
+  const float FAR = DEPTH * 0.88;
 
   // single fetch: blur/pow/detail are pre-baked in the smoothing pass
   float hgt(vec2 q) {
@@ -79,10 +82,25 @@
     return v;
   }
 
+  // the dense low atmosphere the terrain dissolves into and the mountains rise
+  // out of: a deep, dusty haze — dark enough to keep the sky's negative space,
+  // hued enough to read as luminous distance rather than a flat wall.
+  vec3 atmosColor(float hue) {
+    return pal(hue + 0.5, vec3(0.20), vec3(0.20), vec3(1.0), vec3(0.0, 0.20, 0.45));
+  }
+
   vec3 skyColor(vec3 rd, float hue) {
     float y = max(rd.y, 0.0);
     vec3 sky = mix(vec3(0.040, 0.022, 0.085), vec3(0.006, 0.005, 0.022),
                    pow(min(y * 1.7, 1.0), 0.55));
+
+    // dense horizon atmosphere: a haze bank, near-opaque at the horizon and
+    // thinning with altitude so the stars, meteors and aurora overhead stay
+    // clear. The distant terrain fades into this exact colour, so the plane has
+    // no visible edge and the mountains rise straight out of the haze. Muted in
+    // silence (negative space up top), it glows brighter with the music.
+    float atmo = exp(-y * 3.1);
+    sky = mix(sky, atmosColor(hue) * (0.6 + uLevel * 1.05), atmo * 0.93);
 
     float az = clamp(rd.x * 0.55 + 0.5, 0.0, 1.0);
     // the smoothed newest history row: a calm live equalizer
@@ -114,10 +132,6 @@
     iaur *= 0.85 + 0.15 * sin(uTime * 0.18 + az * 2.0); // slow whole-veil breath
     sky += pal(hue + az * 0.35 + 0.1, vec3(0.45), vec3(0.45), vec3(1.0), vec3(0.0, 0.33, 0.67))
            * iaur * uQuiet * 0.20;
-
-    // ground haze so the terrain silhouette reads against the sky
-    sky += pal(hue + az * 0.5, vec3(0.4), vec3(0.4), vec3(1.0), vec3(0.0, 0.33, 0.67))
-           * exp(-y * 8.0) * 0.06;
 
     // moon with a soft halo
     vec3 mdir = normalize(vec3(0.55, 0.42, 0.80));
@@ -172,11 +186,11 @@
       if (dh < 0.0015 * t) { hit = true; break; }
       tPrev = t;
       t += max(dh * 0.35, 0.012);
-      if (t > DEPTH) break;
+      if (t > FAR) break;
     }
 
     vec3 col;
-    if (hit && t < DEPTH) {
+    if (hit && t < FAR) {
       // bisection refine between the last two samples
       float t0 = tPrev, t1 = t;
       for (int j = 0; j < 6; j++) {
@@ -244,8 +258,9 @@
       col += pal(hue + 0.3, vec3(0.4), vec3(0.4), vec3(1.0), vec3(0.0, 0.33, 0.67))
              * exp(-max(hLocal, 0.0) * 2.5) * (0.05 + uHarmonic * 0.07);
 
-      // distance fog into the sky
-      col = mix(col, skyColor(rd, hue), smoothstep(DEPTH * 0.45, DEPTH * 0.98, t));
+      // dissolve the terrain fully into the horizon atmosphere — complete well
+      // before FAR so the plane's far edge is never seen, only haze
+      col = mix(col, skyColor(rd, hue), smoothstep(DEPTH * 0.42, FAR, t));
     } else {
       col = skyColor(rd, hue);
     }
