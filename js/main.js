@@ -510,27 +510,33 @@
       .filter(i => i >= 0);
     const IDLE_CYCLE_SECONDS = 26;
     let idleT = Math.random() * 60, idleCycle = 0, idleNext = 1;
-    function idleDrive(dt) {
+    // synthesize a gentle resting groove. Shared by the landing screen and by
+    // the silence fallback in the render loop; its beat never exceeds 0.5, so
+    // it animates continuous, level-based motion without firing any BPM-gated
+    // action (every scene trigger checks f.beat > 0.9). `gain` (0..1) scales
+    // every loudness term so the silence fallback can ease the groove in from a
+    // standstill instead of popping; the landing screen calls it at full gain.
+    function grooveFeatures(dt, gain = 1) {
       idleT += dt;
-      const f = features, t = idleT;
+      const f = features, t = idleT, g = gain;
       const swell = 0.5 + 0.5 * Math.sin(t * 0.45);                      // ~14 s breath
       const pulse = Math.pow(Math.max(0, Math.sin(t * 3.42)), 6.0);      // soft pulse every ~1.8 s
-      f.level = 0.28 + 0.16 * swell;
-      f.bass = 0.26 + 0.22 * swell + 0.18 * pulse;
-      f.bassFast = 0.45 * pulse;
-      f.mid = 0.22 + 0.14 * Math.sin(t * 0.31 + 1.2);
-      f.treble = 0.16 + 0.12 * Math.sin(t * 0.53 + 2.4);
+      f.level = g * (0.28 + 0.16 * swell);
+      f.bass = g * (0.26 + 0.22 * swell + 0.18 * pulse);
+      f.bassFast = g * 0.45 * pulse;
+      f.mid = g * (0.22 + 0.14 * Math.sin(t * 0.31 + 1.2));
+      f.treble = g * (0.16 + 0.12 * Math.sin(t * 0.53 + 2.4));
       f.centroid = 0.36 + 0.12 * Math.sin(t * 0.21);
-      f.flux = 0.015 + 0.012 * swell;
+      f.flux = g * (0.015 + 0.012 * swell);
       f.onset = 0;
-      f.beat = 0.5 * pulse;
+      f.beat = g * 0.5 * pulse;
       f.beatPhase = (t * 3.42 / (2 * Math.PI)) % 1;
       f.beatConf = 0.15; // below the HUD's display threshold
       f.pitchNorm = 0.4 + 0.15 * Math.sin(t * 0.17);
       f.voiced = 0;
-      f.harmonic = 0.38 + 0.18 * swell;
-      f.percussive = 0.35 * pulse;
-      f.quiet = 0; f.burst = 0;
+      f.harmonic = g * (0.38 + 0.18 * swell);
+      f.percussive = g * 0.35 * pulse;
+      f.quiet = 1 - g; f.burst = 0; // eases the quiet-gated effects in with the groove
       f.phaseLevel += dt * (0.22 + 0.25 * swell);
       f.phaseBass += dt * (0.2 + 0.3 * (f.bass - 0.26));
       f.phaseTreble += dt * 0.25;
@@ -546,12 +552,18 @@
           const fc = 0.018 * k * k + 0.008 * Math.sin(t * 0.4 + k * 1.9);
           v += 90 * Math.exp(-Math.pow((x - fc) * 240, 2.0)) * (0.4 + 0.6 * Math.max(0, Math.sin(t * 0.9 + k * 1.7)));
         }
-        fd[i] = Math.max(0, Math.min(255, v));
+        fd[i] = Math.max(0, Math.min(255, g * v));
       }
       for (let i = 0; i < td.length; i++) {
         const ph = i / td.length * 6.28318 * 12;
-        td[i] = 0.22 * Math.sin(ph + t * 5) + 0.1 * Math.sin(ph * 2.3 + t * 3.1);
+        td[i] = g * (0.22 * Math.sin(ph + t * 5) + 0.1 * Math.sin(ph * 2.3 + t * 3.1));
       }
+    }
+
+    // landing-screen attract loop: the resting groove plus a slow wander
+    // through the photogenic scenes
+    function idleDrive(dt) {
+      grooveFeatures(dt);
       // wander through the photogenic scenes while idling
       idleCycle += dt;
       if (idleCycle > IDLE_CYCLE_SECONDS && idleScenes.length > 1) {
@@ -565,6 +577,8 @@
     // mode watcher: lastMode starts at the classifier's default so the first
     // classification after capture doesn't count as a change
     let lastMode = 'music', pendingMode = null, pendingModeT = 0;
+    let silenceT = 0;    // seconds the live source has been truly silent
+    let silenceGain = 0; // 0..1 ramp of the silence groove fading in
     function frame() {
       requestAnimationFrame(frame);
       if (contextLost) return; // frozen until webglcontextrestored reloads
@@ -592,7 +606,7 @@
       if (media && !idle) {
         mediaHold -= dt;
         if (mediaHold <= 0) {
-          mediaSilence = features.level > 0.02 ? 0 : mediaSilence + dt;
+          mediaSilence = features.rawLevel > 0.02 ? 0 : mediaSilence + dt;
           setPlayingUi(mediaSilence < 1.2);
         }
       }
@@ -657,7 +671,27 @@
         } else { pendingMode = null; pendingModeT = 0; }
       }
 
-      const audio = { f: features, c: classifier, engine, tex: audioTex, mode: idle ? 'music' : classifier.mode };
+      // silence fallback: when a live source goes truly silent, the scenes used
+      // as menu backdrops (idleScenes) ease back into the same groove they show
+      // on the landing screen instead of going blank — the way they settle when
+      // you press escape to the menu. Every other scene hand-builds its own rest
+      // state and is left alone. rawLevel/fluxRaw are read from the real input
+      // (the groove never writes them), so this can't feed back on itself; the
+      // groove's beat stays < 0.9 so no BPM action fires. Applied here, AFTER
+      // the media play/pause inference above, so that reads the genuine signal.
+      const reallySilent = !idle && features.rawLevel < 0.06 && features.fluxRaw < 0.004;
+      silenceT = reallySilent ? silenceT + dt : 0;
+      const grooving = silenceT > 0.4 && active && idleScenes.includes(activeIdx);
+      if (grooving) {
+        silenceGain = Math.min(1, silenceGain + dt / 1.5); // ~1.5 s swell into the groove
+        grooveFeatures(dt, silenceGain);
+      } else {
+        silenceGain = 0; // sound is back: hand straight back to the live signal
+      }
+
+      // grooving scenes read as their landing-screen selves, so present them
+      // the same 'music' mode the idle attract loop uses
+      const audio = { f: features, c: classifier, engine, tex: audioTex, mode: (idle || grooving) ? 'music' : classifier.mode };
       if (!active && M.scenes.length) setScene(idle && idleScenes.length ? idleScenes[0] : 0);
       if (active) {
         if (active.update) active.update(dt, audio, now);

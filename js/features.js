@@ -212,9 +212,13 @@
         this._estimateTempo();
       }
 
-      // beat phase + pulse
+      // beat phase + pulse — gated on sound. In complete silence no predicted
+      // beat may fire, so nothing BPM-driven triggers across any scene. The
+      // tempo lock decays over several seconds, so without this gate the
+      // predictor would keep emitting phantom beats into the silence; freezing
+      // beatPhase here also stops beat-synced shader pulses (uBeatPhase).
       this.beat *= Math.pow(0.5, dt / 0.09);
-      if (this.bpm > 0) {
+      if (this.bpm > 0 && !silent) {
         const period = 60 / this.bpm;
         this.beatPhase = (this.beatPhase + dt / period) % 1;
         // detect the natural beat wrap BEFORE any re-anchor, so snapping
