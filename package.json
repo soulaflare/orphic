@@ -4,6 +4,8 @@
   "version": "0.1.0",
   "description": "ORPHIC — audio-reactive generative visualizer",
   "private": true,
+  "license": "AGPL-3.0-or-later",
+  "author": "Aditya Rajashekaran",
   "main": "./out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",

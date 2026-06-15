@@ -159,3 +159,24 @@ renders literally.
   for screenshots
 - `index.html#ui` — HUD + pattern panel forced visible over the idle scene,
   for styling work
+
+## License
+
+ORPHIC is dual-licensed.
+
+**By default it's free software** under the
+[GNU Affero General Public License v3.0 or later](LICENSE) (AGPL-3.0-or-later).
+You may use, run, study, modify, and redistribute it under those terms —
+including commercially, such as running it at paid events, installations, or
+performances. Because it's the *Affero* GPL, if you redistribute it, build it
+into a larger work, or run a modified version as a network service, you must
+release that work's complete source under the AGPL too, keeping the existing
+copyright and license notices intact (please credit ORPHIC / Aditya
+Rajashekaran).
+
+**For closed-source / proprietary use** — e.g. embedding ORPHIC's code inside a
+proprietary music program or product — the AGPL won't fit, and you'll need a
+separate commercial license. See [COMMERCIAL-LICENSE.md](COMMERCIAL-LICENSE.md);
+terms are available on request via <https://github.com/soulaflare/orphic>.
+
+Copyright © 2026 Aditya Rajashekaran.
