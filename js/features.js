@@ -217,12 +217,20 @@
       if (this.bpm > 0) {
         const period = 60 / this.bpm;
         this.beatPhase = (this.beatPhase + dt / period) % 1;
+        // detect the natural beat wrap BEFORE any re-anchor, so snapping
+        // the phase below can't manufacture a second wrap the same frame
+        let beatNow = this.beatPhase < (this._prevPhase || 0);
         // re-anchor phase to strong onsets near the predicted beat
         if (this.onset === 1) {
           const ph = this.beatPhase;
-          if (ph < 0.15 || ph > 0.85) this.beatPhase = 0;
+          if (ph > 0.85) {        // onset just before the predicted beat:
+            this.beatPhase = 0;   // snap forward and let it fire now
+            beatNow = true;
+          } else if (ph < 0.15) { // onset just after the beat already fired:
+            this.beatPhase = 0;   // realign phase only, never re-trigger
+          }
         }
-        if (this.beatPhase < (this._prevPhase || 0)) { // wrapped
+        if (beatNow) {
           this.beat = 1;
           this._lastBeatT = this._time;
         }
@@ -364,6 +372,25 @@
         s *= Math.exp(-0.5 * (oct / 0.9) * (oct / 0.9));
         if (s > bestScore) { bestScore = s; bestLag = lag; }
       }
+      // resolve the metrical octave. The comb score above can land on a
+      // subdivision (a beat read at 2x, e.g. 90→180) or on a backbeat (read
+      // at 1/2x, e.g. 123→61). Re-judge the half / chosen / double lag by
+      // prior-weighted periodicity — overlap-compensated autocorrelation
+      // times the 120-BPM log-gaussian — and keep the strongest. Because the
+      // prior favours the level nearest a perceptual tempo, this pulls both a
+      // subdivision and a backbeat back onto the true beat in one step.
+      if (bestLag) {
+        const wStrength = (lag) => {
+          if (lag < minLag || lag > acN || lag >= HIST) return -1;
+          const oct = Math.log2(60 * fps / lag / 120);
+          return ac[lag] * HIST / (HIST - lag) * Math.exp(-0.5 * (oct / 0.9) * (oct / 0.9));
+        };
+        const half = Math.round(bestLag / 2), dbl = bestLag * 2;
+        let bw = wStrength(bestLag);
+        const wh = wStrength(half), wd = wStrength(dbl);
+        if (wh > bw) { bw = wh; bestLag = half; }
+        if (wd > bw) { bw = wd; bestLag = dbl; }
+      }
       const peak = bestLag > 0 ? ac[bestLag] : 0;
       // hysteresis: acquiring a lock needs a clear peak, holding one doesn't
       if (!bestLag || peak < (this.bpm ? 0.07 : 0.12)) {
@@ -397,9 +424,14 @@
         if (recent.length >= 3) this.bpm = med;
         return;
       }
-      let cand = med; // fold double/half-tempo flips back onto the lock
-      if (cand > this.bpm * 1.7 && cand < this.bpm * 2.3) cand *= 0.5;
-      else if (cand > this.bpm * 0.43 && cand < this.bpm * 0.59) cand *= 2;
+      // octave continuity: a stray estimate an octave off the lock is the
+      // SAME tempo at another metrical level — snap it onto the lock so the
+      // reading never flip-flops between a beat and its half/double. Only a
+      // disagreement that no octave can reconcile, sustained ~2s, counts as a
+      // real tempo change and re-acquires.
+      let cand = med;
+      if (Math.abs(cand * 2 - this.bpm) < this.bpm * 0.08) cand *= 2;
+      else if (Math.abs(cand * 0.5 - this.bpm) < this.bpm * 0.08) cand *= 0.5;
       if (Math.abs(cand - this.bpm) < this.bpm * 0.08) {
         this._bpmMiss = 0;
         this.bpm += (cand - this.bpm) * 0.25;
