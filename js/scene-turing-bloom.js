@@ -1,9 +1,11 @@
 /* ORPHIC scene — REACTION-DIFFUSION · turing bloom
  * Gray-Scott model (Pearson 1993, Karl Sims' formulation) on a half-res
- * float grid, 13 sim steps/frame (3 when quiet). The feed/kill pair drifts between known
- * pattern regimes (mitosis, worms, coral); bass perturbs the feed rate,
- * beats stamp fresh seeds, and the relief is lit from the B-field gradient
- * so the patterns read as embossed, growing tissue.
+ * float grid, 13 sim steps/frame (5 when quiet). The feed/kill pair drifts
+ * between known pattern regimes (mitosis, worms, coral); bass perturbs the
+ * feed rate, beats stamp fresh seeds, and the relief is lit from the B-field
+ * gradient so the patterns read as embossed, growing tissue. In silence the
+ * field settles into the mitosis regime and self-seeds gently, so a calm
+ * dotted garden takes hold and holds instead of wilting away.
  */
 (function () {
   'use strict';
@@ -85,6 +87,9 @@
     [0.0300, 0.0620], // solitons
     [0.0260, 0.0580], // pulsing chaos
   ];
+  // rest regime: mitosis spots, where the pattern locks in and holds. Silence
+  // settles here so the dotted bloom stays alive instead of wilting away.
+  const REST = REGIMES[0]; // [0.0367, 0.0649] mitosis
 
   M.registerScene({
     name: 'turing bloom · reaction-diffusion',
@@ -97,6 +102,7 @@
       let regime = 0, regimeBlend = 0;
       let splat = { x: 0.5, y: 0.5, r: 0, amt: 0 };
       let beatCount = 0;
+      let restSeedT = 0; // countdown to the next gentle silence seed
 
       function seed() {
         pInit.use().f('uSeed', Math.random() * 100);
@@ -118,14 +124,20 @@
           if (regimeBlend >= 1) { regimeBlend = 0; regime = (regime + 1) % REGIMES.length; }
           const a = REGIMES[regime], b = REGIMES[(regime + 1) % REGIMES.length];
           const s = regimeBlend * regimeBlend * (3 - 2 * regimeBlend);
+          const q = Math.min(1, f.quiet); // 0 = music, 1 = settled silence
           let feed = a[0] + (b[0] - a[0]) * s + f.bass * 0.006;
-          // in a rest the kill rate creeps up: the tissue visibly wilts back
-          let kill = a[1] + (b[1] - a[1]) * s + f.centroid * 0.0015 + f.quiet * 0.0035;
+          let kill = a[1] + (b[1] - a[1]) * s + f.centroid * 0.0015;
+          // silence: don't wilt the tissue away — settle toward the mitosis
+          // regime, where spots lock in and hold, so the bloom keeps a calm
+          // dotted garden alive in the dark instead of forever trying to form
+          // and dissolving (the dots only used to "stick" once music returned)
+          feed += (REST[0] - feed) * q;
+          kill += (REST[1] - kill) * q;
 
-          // beat → stamp a new seed along a slowly precessing ring
+          // seeds
           splat.amt = 0;
           if (f.burst === 1) {
-            // music returns: a fat bloom right where the wilt left room
+            // music returns: a fat bloom right where the rest left room
             splat.x = 0.5; splat.y = 0.5;
             splat.r = 0.07;
             splat.amt = 0.9;
@@ -140,10 +152,24 @@
             splat.x = Math.random(); splat.y = Math.random();
             splat.r = 0.008 + f.flux * 0.1;
             splat.amt = 0.45;
+          } else if (q > 0.5) {
+            // silence has no onsets to nucleate from, so the spots have nothing
+            // to take hold around — drop a soft seed now and then so the garden
+            // slowly populates and the dots finally stick
+            restSeedT -= dt;
+            if (restSeedT <= 0) {
+              restSeedT = 1.0 + Math.random() * 1.3;
+              splat.x = 0.5 + (Math.random() - 0.5) * 0.66;
+              splat.y = 0.5 + (Math.random() - 0.5) * 0.66;
+              splat.r = 0.02;
+              splat.amt = 0.7;
+            }
           }
 
-          // rests slow the chemistry to a crawl — growth visibly pauses
-          const STEPS = f.quiet > 0.5 ? 3 : 13;
+          // chemistry rate: still a calm crawl relative to the music's 13, but
+          // enough steps that the rest spots come up quickly and then self-
+          // sustain (linger) rather than hovering half-formed
+          const STEPS = q > 0.5 ? 8 : 13;
           for (let i = 0; i < STEPS; i++) {
             pSim.use()
               .v2('uTexel', 1 / state.read.w, 1 / state.read.h)
