@@ -531,9 +531,10 @@
     // scenes whose SILENT mode is the idle groove: the menu backdrops, plus a
     // few that simply read better grooving than resting on their own hand-coded
     // silence (murmuration's flock flies with real vigor under the groove, the
-    // way it looks when you escape to the menu). Kept separate from IDLE_NAMES
+    // way it looks when you escape to the menu; escher gate keeps gliding and
+    // glowing instead of freezing to dark embers). Kept separate from IDLE_NAMES
     // so these don't join the menu attract rotation.
-    const GROOVE_NAMES = [...IDLE_NAMES, 'murmuration'];
+    const GROOVE_NAMES = [...IDLE_NAMES, 'murmuration', 'escher gate'];
     const grooveScenes = GROOVE_NAMES
       .map(n => M.scenes.findIndex(d => d.name.includes(n)))
       .filter(i => i >= 0);
