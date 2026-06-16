@@ -532,12 +532,16 @@
     // few that simply read better grooving than resting on their own hand-coded
     // silence (murmuration's flock flies with real vigor under the groove, the
     // way it looks when you escape to the menu; escher gate keeps gliding and
-    // glowing instead of freezing to dark embers). Kept separate from IDLE_NAMES
-    // so these don't join the menu attract rotation.
-    const GROOVE_NAMES = [...IDLE_NAMES, 'murmuration', 'escher gate'];
+    // glowing instead of freezing to dark embers; physarum's network keeps
+    // pulsing instead of collapsing to a near-black idle). Kept separate from
+    // IDLE_NAMES so these don't join the menu attract rotation.
+    const GROOVE_NAMES = [...IDLE_NAMES, 'murmuration', 'escher gate', 'physarum'];
     const grooveScenes = GROOVE_NAMES
       .map(n => M.scenes.findIndex(d => d.name.includes(n)))
       .filter(i => i >= 0);
+    // physarum runs the same groove as the menu backdrop, but dimmed a touch so
+    // its silent mode sits just below the full-gain look you get on escape.
+    const physarumIdx = M.scenes.findIndex(d => d.name.includes('physarum'));
     const IDLE_CYCLE_SECONDS = 26;
     let idleT = Math.random() * 60, idleCycle = 0, idleNext = 1;
     // synthesize a gentle resting groove. Shared by the landing screen and by
@@ -643,7 +647,8 @@
       silenceT = reallySilent ? silenceT + dt : 0;
       const grooving = silenceT > 0.4 && active && grooveScenes.includes(activeIdx);
       if (grooving) {
-        silenceGain = Math.min(1, silenceGain + dt / 1.5); // ~1.5 s swell into the groove
+        const ceil = activeIdx === physarumIdx ? 0.82 : 1; // physarum a shade dimmer
+        silenceGain = Math.min(ceil, silenceGain + dt / 1.5); // ~1.5 s swell into the groove
         grooveFeatures(dt, silenceGain);
       } else {
         silenceGain = 0; // sound is back: hand straight back to the live signal
