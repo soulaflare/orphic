@@ -18,6 +18,7 @@
   uniform vec2 uMob;                 // Möbius view offset (|m| < 1)
   uniform float uSpin, uKeyHue;
   uniform float uAngP, uCD, uCR2;    // wedge angle pi/p, mirror circle (d, r^2)
+  uniform float uMorph;              // 0..1 bloom while re-tessellating
 
   vec2 cmul(vec2 a, vec2 b) { return vec2(a.x * b.x - a.y * b.y, a.x * b.y + a.y * b.x); }
   vec2 cdiv(vec2 a, vec2 b) { return cmul(a, vec2(b.x, -b.y)) / dot(b, b); }
@@ -67,7 +68,7 @@
     float band = specLog(clamp(tier / 14.0, 0.0, 1.0));
     float hue = uKeyHue + tier * 0.075;
     vec3 lineCol = pal(hue, vec3(0.5), vec3(0.5), vec3(1.0), vec3(0.0, 0.33, 0.67));
-    vec3 col = lineCol * line * (0.22 + band * 1.8 + uBurst * 1.5);
+    vec3 col = lineCol * line * (0.22 + band * 1.8 + uBurst * 1.5 + uMorph * 0.9);
 
     // cell interiors washed faintly by their band
     col += pal(hue + 0.35, vec3(0.45), vec3(0.4), vec3(1.0), vec3(0.0, 0.33, 0.67))
@@ -99,17 +100,25 @@
       const prog = glc.program(FRAG);
       let keyHue = 0.3, spin = 0, mobPhase = 0;
       let tileIdx = 0, beatCount = 0, beatLatch = 0;
-      let angP = 0, cd = 0, cr2 = 0;
+      let angP = 0, cd = 0, cr2 = 0;          // live geometry (eased)
+      let angPT = 0, cdT = 0, cr2T = 0;       // targets for the next tiling
+      let morph = 0;                          // bloom that fires on re-tessellation
 
+      // p,q are integers, so the in-between frames aren't *exact* tilings — but
+      // the fold field stays continuous in these params, so easing the live
+      // geometry toward the target morphs the lattice instead of popping it.
       function setTiling(i) {
         const [p, q] = TILINGS[((i % TILINGS.length) + TILINGS.length) % TILINGS.length];
         const A = Math.PI / p, B = Math.PI / q;
         const d2 = Math.cos(B) ** 2 / (Math.cos(B) ** 2 - Math.sin(A) ** 2);
-        angP = A;
-        cd = Math.sqrt(d2);
-        cr2 = d2 - 1;
+        angPT = A;
+        cdT = Math.sqrt(d2);
+        cr2T = d2 - 1;
+        morph = 1;
       }
       setTiling(0);
+      angP = angPT; cd = cdT; cr2 = cr2T;     // first tiling snaps in, no morph
+      morph = 0;
 
       return {
         resize() {},
@@ -122,12 +131,20 @@
 
           beatLatch -= dt;
           if (f.beat > 0.9 && beatLatch <= 0) { beatCount++; beatLatch = 0.25; }
-          // re-tessellate the whole plane every 8 beats, or when the music
-          // returns from a rest
-          if (beatCount >= 8 || f.burst === 1) {
+          // re-tessellate the whole plane every 16 beats, or when the music
+          // returns from a rest — rarer than before so each morph is an event
+          if (beatCount >= 16 || f.burst === 1) {
             beatCount = 0;
             setTiling(++tileIdx);
           }
+
+          // ease the live geometry toward the target — the gate snaps into
+          // its new symmetry without popping (~0.9s settle); morph bloom decays
+          const k = 1 - Math.exp(-dt / 0.32);
+          angP += (angPT - angP) * k;
+          cd += (cdT - cd) * k;
+          cr2 += (cr2T - cr2) * k;
+          morph = Math.max(0, morph - dt / 0.7);
         },
         render(out, audio, t) {
           const mx = 0.42 * Math.sin(mobPhase * 0.83);
@@ -138,7 +155,8 @@
           prog.v2('uRes', glc.width, glc.height)
               .v2('uMob', mx, my)
               .f('uSpin', spin).f('uKeyHue', keyHue)
-              .f('uAngP', angP).f('uCD', cd).f('uCR2', cr2);
+              .f('uAngP', angP).f('uCD', cd).f('uCR2', cr2)
+              .f('uMorph', morph);
           glc.draw(prog, out);
         },
         dispose() { prog.dispose(); },
