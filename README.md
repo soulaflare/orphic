@@ -4,12 +4,28 @@
   <img src="docs/assets/banner.jpg" alt="ORPHIC — sync swarm scene" width="100%">
 </p>
 
-Sixteen GPU pattern simulations that react live to **whatever's playing**
-(Spotify, YouTube, anything), with automatic speech-vs-music detection that
-re-tunes the visuals for voice. Runs two ways: as a desktop app (Electron)
-that captures **everything playing on the machine** natively, or as a
-zero-dependency web page. Until capture starts, the landing screen plays an
-idle attract mode — a real scene breathing to a gentle synthetic groove.
+> When I was a kid I'd lose whole evenings to the visualizers bundled with
+> Winamp and Windows Media Player — geometry blooming and folding in time with
+> whatever album I was wearing out that month. They weren't decoration. They
+> told a little story alongside the music, and I'd sit there transfixed,
+> watching the song *become* something I could see.
+>
+> Then streaming happened. Spotify, YouTube, Apple Music — the music got
+> infinite and the picture went away. The visualizers that survived feel frozen
+> in 2004: the same tired bars and plasma, oblivious to the decade of GPU and
+> audio-DSP advances that happened in the meantime. I missed staring at sound.
+> So I built ORPHIC to bring that feeling back — and drag it firmly into the
+> present.
+
+**ORPHIC turns whatever you're already playing into a living, generative
+light show.** Seventeen GPU pattern simulations — slime molds, fluids, fractals,
+flocks, nebulae — react live to **anything coming out of your speakers**
+(Spotify, YouTube, a DJ set, a film), and an automatic speech-vs-music detector
+re-tunes the visuals the moment a voice takes over. Run it as a desktop app
+(Electron) that captures **everything on the machine** natively, or as a
+zero-dependency web page you can open with a double-click. Until you hit play,
+the landing screen drifts through an idle attract mode — a real scene breathing
+to a gentle synthetic groove.
 
 <p align="center">
   <a href="https://github.com/soulaflare/orphic/releases/latest"><img src="https://img.shields.io/github/v/release/soulaflare/orphic?label=download%20for%20macOS&logo=apple&color=8be9fd" alt="Download the latest macOS release"></a>
@@ -143,7 +159,7 @@ Spotify/Music on macOS, media keys on Windows, MPRIS on Linux.
 |---|---|
 | `space` / `enter` | landing: start capture · panel: select the highlighted pattern |
 | `space` | playing: skip to the next pattern |
-| `s` / click the scene pill | pattern panel — all sixteen; arrows navigate the grid, click or enter to pick |
+| `s` / click the scene pill | pattern panel — all seventeen; arrows navigate the grid, click or enter to pick |
 | `←` `→` | previous / next pattern (in the panel: move across the grid) |
 | `↑` `↓` | move up / down the pattern grid (panel open) |
 | `a` | toggle auto-cycle (switches pattern every ~45 s, on a beat) |
@@ -152,7 +168,7 @@ Spotify/Music on macOS, media keys on Windows, MPRIS on Linux.
 | `j` / `l` | previous / next track (desktop app) |
 | `esc` | close the panel — or, while playing, stop capture back to the landing |
 
-## The sixteen patterns
+## The seventeen patterns
 
 | # | scene | system | reacts how |
 |---|---|---|---|
@@ -171,7 +187,8 @@ Spotify/Music on macOS, media keys on Windows, MPRIS on Linux.
 | 13 | **murmuration · dusk flock** | 65k field-coupled boids (no neighbor lists: a 128² velocity/density field drives alignment/cohesion/separation) | kicks flare separation so the cloud bursts and regroups, mids tighten formation, onsets launch a hawk through the flock, and every bird is keyed to one spectrum slice — its band's energy agitates it |
 | 14 | **escher gate · hyperbolic tiling** | {p,q} Poincaré-disk tiling via (p,q,2) triangle-group folds | glides through hyperbolic space on loudness (rests freeze it to embers), re-tessellates every 8 beats or when music returns, tiling depth tiers lit per-frequency (bass = heart, treble = infinite rim), harmonic content thickens the lattice, percussive hits flash the vertices |
 | 15 | **stellar nursery · ember nebula** | raymarched volumetric gyroid gas, emission/absorption | beats detonate shockwave shells through the gas, percussive energy flares the core star, harmonic content makes the gas glow, radius shells lit per-frequency; rests thin it to a dim ember and pull the camera away — the return is a supernova |
-| 16 | **voice aurora · pitch contour** | live pitch tracking drawn as flowing arcs | speech-only scene: ribbon rides your pitch, sibilance shadows above, consonants spark |
+| 16 | **vocal tract · resonant cavity** | 2D FDTD acoustic wave field ringing inside a tube shaped like the vocal tract (closed glottis, open lips) | speech scene: a glottal pulse train at the live pitch drives the inlet and the formants bloom as bright vertical lobes; the vowel reshapes the tube (F1 openness, F2 frontness — /i/ and /a/ resonate as different bodies), unvoiced sibilants inject turbulent hiss, silence damps to black |
+| 17 | **sync swarm · swarmalators** | O'Keeffe–Hong–Strogatz (2017) swarmalators: 4,096 agents each carrying a position *and* an internal phase, coupled both ways (phase reads as hue) | loudness drives the rainbow disc to rotate harder and brighter, beats breathe a pulse outward, a slow tide morphs between a tight ring, splintered clusters and a drifting cloud; only true rests disperse it to the dark |
 
 ## How it listens
 
