@@ -75,8 +75,13 @@
     float fx = clamp(q.x / WIDTH * 0.5 + 0.5, 0.0, 1.0);
     float tz = clamp(q.y / DEPTH, 0.0, 1.0);
     // newest history row sits at the horizon: sounds approach the camera
-    return texture(uSpectrogram, vec2(fx, mix(0.03, 0.985, tz))).r * uAmp
-         - curveDrop(q);
+    float h = texture(uSpectrogram, vec2(fx, mix(0.03, 0.985, tz))).r * uAmp;
+    // emerge from under the limb: the farthest terrain is flattened, so a new
+    // sound is born tucked below the curve (lost in the horizon haze) and then
+    // GROWS to full height as it rides in — mountains come up out of the curve
+    // along the plane instead of popping in at full height beyond it.
+    h *= smoothstep(0.97, 0.60, tz);
+    return h - curveDrop(q);
   }
 
   float fbm3(vec2 p) {
@@ -168,6 +173,12 @@
   void main() {
     vec2 uv = (vUV - 0.5) * vec2(uRes.x / uRes.y, 1.0);
     float camH = uAmp * 1.15 + 0.35;
+    // ground silhouette distance for this camera height (matches curveDrop's
+    // radius). The fog below is tuned to saturate right here, so the flat ground
+    // melts into the haze exactly as it grazes the horizon — for ANY camera
+    // height, not just one tuned value.
+    float tHorizon = sqrt(camH * 320.0) / 0.97;
+    float fogK = 4.6 / (tHorizon * tHorizon);
     vec3 ro = vec3(uSway, camH, 0.0);
     vec3 rd = normalize(vec3(uv.x * 0.9 + uSway * -0.04, uv.y * 0.9 - 0.22, 1.0));
 
@@ -267,7 +278,7 @@
       // edge dissolves entirely. The height term lets tall peaks rise THROUGH
       // the haze instead of melting into it, so mountains still emerge over the
       // atmosphere while the flat ground around them disappears.
-      float distFog = 1.0 - exp(-t * t * 0.0061);
+      float distFog = 1.0 - exp(-t * t * fogK);
       float fog = distFog * exp(-max(hLocal, 0.0) * 1.1);
       col = mix(col, skyColor(rd, hue), fog);
     } else {
