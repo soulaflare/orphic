@@ -65,23 +65,28 @@
   }
 
   const float WIDTH = 6.0;   // lateral half-extent (frequency axis)
-  const float DEPTH = 30.0;  // view distance (time axis) — newest sounds erupt here
-  // terrain dissolves COMPLETELY into the horizon atmosphere before this, so the
-  // geometric far edge of the plane is never visible; the march stops here too.
-  const float FAR = DEPTH * 0.88;
+
+  // the ground's silhouette distance for the current camera height (matched to
+  // curveDrop's radius). The newest history row, the march limit and the melt
+  // fog all key off this one value, so the LIVE audio erupts at full height
+  // exactly on the visible horizon — where you watch it form — and then rides
+  // toward the camera, for any camera height. Nothing is created off beyond a
+  // fixed far plane where you can't see it.
+  float horizonDist() {
+    float camH = uAmp * 1.15 + 0.35;
+    return sqrt(camH * 320.0) / 0.97;
+  }
 
   // single fetch: blur/pow/detail are pre-baked in the smoothing pass
   float hgt(vec2 q) {
+    float tH = horizonDist();
     float fx = clamp(q.x / WIDTH * 0.5 + 0.5, 0.0, 1.0);
-    float tz = clamp(q.y / DEPTH, 0.0, 1.0);
-    // newest history row sits at the horizon: sounds approach the camera
-    float h = texture(uSpectrogram, vec2(fx, mix(0.03, 0.985, tz))).r * uAmp;
-    // emerge from under the limb: the farthest terrain is flattened, so a new
-    // sound is born tucked below the curve (lost in the horizon haze) and then
-    // GROWS to full height as it rides in — mountains come up out of the curve
-    // along the plane instead of popping in at full height beyond it.
-    h *= smoothstep(0.97, 0.60, tz);
-    return h - curveDrop(q);
+    // newest row lands right on the horizon at FULL reactive height; older
+    // history rides toward the camera. No far-side height ramp — the audio
+    // sculpts the terrain where you can see it.
+    float tz = clamp(q.y / tH, 0.0, 1.0);
+    return texture(uSpectrogram, vec2(fx, mix(0.03, 0.985, tz))).r * uAmp
+         - curveDrop(q);
   }
 
   float fbm3(vec2 p) {
@@ -177,7 +182,7 @@
     // radius). The fog below is tuned to saturate right here, so the flat ground
     // melts into the haze exactly as it grazes the horizon — for ANY camera
     // height, not just one tuned value.
-    float tHorizon = sqrt(camH * 320.0) / 0.97;
+    float tHorizon = horizonDist();
     float fogK = 4.6 / (tHorizon * tHorizon);
     vec3 ro = vec3(uSway, camH, 0.0);
     vec3 rd = normalize(vec3(uv.x * 0.9 + uSway * -0.04, uv.y * 0.9 - 0.22, 1.0));
@@ -200,11 +205,11 @@
       if (dh < 0.0015 * t) { hit = true; break; }
       tPrev = t;
       t += max(dh * 0.35, 0.012);
-      if (t > FAR) break;
+      if (t > tHorizon) break;
     }
 
     vec3 col;
-    if (hit && t < FAR) {
+    if (hit && t < tHorizon) {
       // bisection refine between the last two samples
       float t0 = tPrev, t1 = t;
       for (int j = 0; j < 6; j++) {
@@ -222,7 +227,7 @@
                               hgt(p.xz - e.yx) - hgt(p.xz + e.yx)));
 
       float fx = clamp(p.x / WIDTH * 0.5 + 0.5, 0.0, 1.0);
-      float tz = clamp(p.z / DEPTH, 0.0, 1.0);
+      float tz = clamp(p.z / tHorizon, 0.0, 1.0);
       vec3 sg = texture(uSpectrogram, vec2(fx, mix(0.03, 0.985, tz))).rgb;
       // height above the local planet surface, not the flat plane
       float hLocal = p.y + curveDrop(p.xz);
