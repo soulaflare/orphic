@@ -86,7 +86,26 @@ stream goes dead silently instead of erroring, electron/electron#49607).
 
 Packaged builds are currently unsigned: macOS Gatekeeper shows an
 "unidentified developer" warning and Windows SmartScreen an "unknown
-publisher" one. To sign:
+publisher" one.
+
+> **Downloaded a build from the Releases page?** It's ad-hoc signed but not
+> notarized, so the first launch is blocked. To open it on macOS:
+>
+> 1. Open the `.dmg` and drag **ORPHIC** into **Applications**.
+> 2. Launch it. macOS says *"Apple could not verify ORPHIC is free of
+>    malware"* and refuses.
+> 3. Open **System Settings → Privacy & Security**, scroll to the
+>    Security section, and click **Open Anyway** next to the ORPHIC
+>    message — then confirm. (On macOS 14 Sonoma you can instead
+>    right-click the app → **Open** → **Open**.)
+>
+> You only do this once. The app is safe — it's just not paying Apple's
+> $99/yr notarization toll. Needs macOS **14.2 or later**, and it asks
+> once for **System Audio Recording** permission so it can see what's
+> playing. (You can always skip all this and just run it in a browser —
+> see [Run it — web](#run-it--web).)
+
+To sign properly (no warning for downloaders):
 
 - **macOS** — join the Apple Developer Program ($99/yr), create a
   *Developer ID Application* certificate, then set `CSC_NAME` (or
