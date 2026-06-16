@@ -11,6 +11,12 @@ that captures **everything playing on the machine** natively, or as a
 zero-dependency web page. Until capture starts, the landing screen plays an
 idle attract mode — a real scene breathing to a gentle synthetic groove.
 
+<p align="center">
+  <a href="https://github.com/soulaflare/orphic/releases/latest"><img src="https://img.shields.io/github/v/release/soulaflare/orphic?label=download%20for%20macOS&logo=apple&color=8be9fd" alt="Download the latest macOS release"></a>
+</p>
+
+**[⬇ Download for macOS (Apple Silicon)](https://github.com/soulaflare/orphic/releases/latest)** — needs macOS 14.2+; first launch needs a [one-time Gatekeeper step](#signing--distribution). Or [run it in a browser](#run-it--web) with no install.
+
 ## Gallery
 
 <table>
@@ -54,7 +60,12 @@ drivers and no extra dependencies, via Chromium's OS loopback capture
 | Windows 10/11 | WASAPI loopback | none |
 | macOS | CoreAudio process taps | **macOS 14.2 (Sonoma) or later** — the app refuses to launch on anything older (process taps don't exist there, capture would be permanently silent); one-time "System Audio Recording" consent |
 
-Clone the repo and you can build your own native app: `npm run dist:win` makes
+Prebuilt macOS (Apple Silicon) builds are on the
+[Releases page](https://github.com/soulaflare/orphic/releases/latest) — download
+the `.dmg`, drag ORPHIC to Applications, and see [Signing & distribution](#signing--distribution)
+for the one-time first-launch step.
+
+Or clone the repo and build your own native app: `npm run dist:win` makes
 a Windows installer (whole-system audio via WASAPI loopback, no extra setup).
 
 Linux isn't officially supported — there's no packaged build and it's untested
