@@ -35,8 +35,11 @@ g.addColorStop(1, 'rgba(3, 2, 8, 0)');
 x.fillStyle = g;
 x.fillRect(0, 0, S, S);
 
-// ---- circular waveform ring: the spectrum wrapped into an orbit ----
-// deterministic layered sines = an organic "frozen moment of music"
+// ---- the highlighted cursor's rim: ORPHIC's clickable-bloom ring ----
+// over anything clickable the cursor halo blooms into the spinning brand
+// gradient (css: conic #8be9fd→#bd93f9→#ff79c6→#8be9fd). That hot ring is
+// thick and spectral — it reads at every icon size, where the old hairline
+// waveform vanished. A faint layered-sine wobble keeps the orbit organic.
 function wob(a) {
   return Math.sin(a * 3 + 0.7) * 5
        + Math.sin(a * 7 + 2.1) * 4
@@ -55,30 +58,44 @@ function ringPath(base, amp) {
   }
   x.closePath();
 }
-const ringGrad = x.createLinearGradient(CX - 300, CY + 300, CX + 300, CY - 300);
-ringGrad.addColorStop(0, '#7b5cff');   // violet (bass end)
-ringGrad.addColorStop(0.55, '#8be9fd'); // the app's cyan accent
-ringGrad.addColorStop(1, '#d8f6ff');   // bright treble tip
+// the cursor's hot rim, started at top (−90°) so cyan crowns the ring
+const RR = 300; // orbit radius
+const conic = x.createConicGradient(-Math.PI / 2, CX, CY);
+conic.addColorStop(0.00, '#8be9fd'); // cyan
+conic.addColorStop(0.34, '#bd93f9'); // violet
+conic.addColorStop(0.67, '#ff79c6'); // pink
+conic.addColorStop(1.00, '#8be9fd'); // back to cyan — seamless spin
 
-// soft echo ring (the beat that just passed)
-x.globalAlpha = 0.22;
-x.strokeStyle = ringGrad;
-x.lineWidth = 3;
-x.shadowColor = 'rgba(123, 92, 255, 0.8)';
-x.shadowBlur = 40;
-ringPath(330, 1.8);
+x.lineJoin = 'round';
+
+// soft echo ring (the beat that just passed) — wider, dim
+x.globalAlpha = 0.18;
+x.strokeStyle = conic;
+x.lineWidth = 96;
+x.shadowColor = 'rgba(139, 233, 253, 0.6)';
+x.shadowBlur = 70;
+ringPath(RR + 30, 1.6);
 x.stroke();
 
-// main ring — crisp, glowing
+// main hot ring — thick, glowing, the highlighted cursor frozen mid-bloom
 x.globalAlpha = 1;
-x.lineWidth = 4.5;
-x.shadowColor = 'rgba(139, 233, 253, 0.9)';
-x.shadowBlur = 30;
-ringPath(278, 1.0);
+x.lineWidth = 78;
+x.shadowColor = 'rgba(139, 233, 253, 0.85)';
+x.shadowBlur = 46;
+ringPath(RR, 1.0);
 x.stroke();
-ringPath(278, 1.0); // double-stroke for core brightness
-x.shadowBlur = 8;
+x.shadowBlur = 0;
+ringPath(RR, 1.0); // crisp pass over the glow
 x.stroke();
+
+// bright inner highlight along the rim's inner lip — gives the ring a glassy
+// rounded edge instead of a flat band
+x.globalAlpha = 0.55;
+x.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+x.lineWidth = 6;
+ringPath(RR - 33, 1.0);
+x.stroke();
+x.globalAlpha = 1;
 
 // ---- the mote: ORPHIC's luminous cursor-being at the heart ----
 x.shadowBlur = 0;
@@ -101,8 +118,8 @@ x.beginPath(); x.arc(CX, CY, 30, 0, Math.PI * 2); x.fill();
 
 // ---- a few drifting motes on / near the orbit (the flock listening) ----
 const sparks = [
-  [0.30, 272, 5.0, 0.9], [1.45, 286, 3.2, 0.7], [2.62, 260, 4.0, 0.8],
-  [3.9, 280, 2.6, 0.6], [4.8, 252, 3.4, 0.75], [5.6, 296, 2.2, 0.55],
+  [0.30, 392, 5.0, 0.9], [1.45, 406, 3.2, 0.7], [2.62, 380, 4.0, 0.8],
+  [3.9, 400, 2.6, 0.6], [4.8, 372, 3.4, 0.75], [5.6, 416, 2.2, 0.55],
 ];
 for (const [a, r, sz, al] of sparks) {
   const px = CX + Math.cos(a) * (r + wob(a)), py = CY + Math.sin(a) * (r + wob(a));
