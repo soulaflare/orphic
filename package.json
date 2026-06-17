@@ -1,7 +1,7 @@
 {
   "name": "orphic",
   "productName": "ORPHIC",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "ORPHIC — audio-reactive generative visualizer",
   "private": true,
   "license": "AGPL-3.0-or-later",

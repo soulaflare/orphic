@@ -37,6 +37,11 @@
       bpmText: document.getElementById('bpm-text'),
       beatDot: document.getElementById('beat-dot'),
       systemBtn: document.getElementById('btn-system'),
+      micLandingBtn: document.getElementById('btn-mic-landing'),
+      sysBtn: document.getElementById('btn-sys'),
+      micBtn: document.getElementById('btn-mic'),
+      micMenuBtn: document.getElementById('btn-mic-menu'),
+      micMenu: document.getElementById('mic-menu'),
       autoBtn: document.getElementById('btn-auto'),
       mediaGroup: document.getElementById('media-group'),
       prevBtn: document.getElementById('btn-prev'),
@@ -79,14 +84,16 @@
           'For whole-system audio (no tab picker) and the best experience, get the <b>desktop app</b>.';
         nudge.hidden = false;
       } else {
+        // Safari & Firefox can't share tab/system audio — but the microphone
+        // (getUserMedia) still works, so block only the system path, not mic.
         webBlocked = true;
         ui.systemBtn.disabled = true;
-        ui.systemBtn.querySelector('.cta-label').textContent = 'audio sharing unavailable';
-        ui.systemBtn.querySelector('.sub').textContent = "this browser can't share audio";
+        ui.systemBtn.querySelector('.cta-label').textContent = 'system audio unavailable';
+        ui.systemBtn.querySelector('.sub').textContent = "this browser can't share system audio";
         nudge.classList.add('error');
         nudge.innerHTML =
-          "Safari and Firefox don't let a page capture audio, so ORPHIC can't hear anything here. " +
-          '<b>Open this page in Chrome</b>, or download the desktop app for full system audio.';
+          "Safari and Firefox can't share system audio — but your <b>microphone</b> still works below. " +
+          'For whole-system audio, open this page in Chrome or get the <b>desktop app</b>.';
         nudge.hidden = false;
       }
     }
@@ -357,7 +364,10 @@
     }
 
     // ---- input wiring ----
-    ui.systemBtn.addEventListener('click', startSystem);
+    ui.systemBtn.addEventListener('click', () => toggleSystem());
+    if (ui.micLandingBtn) ui.micLandingBtn.addEventListener('click', () => toggleMic());
+    if (ui.sysBtn) ui.sysBtn.addEventListener('click', () => toggleSystem());
+    if (ui.micBtn) ui.micBtn.addEventListener('click', () => toggleMic());
     ui.autoBtn.addEventListener('click', () => {
       autoCycle = !autoCycle;
       ui.autoBtn.classList.toggle('on', autoCycle);
@@ -402,7 +412,7 @@
 
     function togglePanel(open) {
       const want = open !== undefined ? open : ui.panel.classList.contains('hidden');
-      if (want && engine.mode === 'none') return; // not on the landing screen
+      if (want && !engine.active) return; // not on the landing screen
       ui.panel.classList.toggle('hidden', !want);
     }
     ui.scenePill.addEventListener('click', e => { e.stopPropagation(); togglePanel(); });
@@ -415,34 +425,159 @@
       if (!ui.panel.classList.contains('hidden') && !ui.panel.contains(e.target)) togglePanel(false);
     });
 
-    function stopCapture() {
+    // ---- audio sources ----
+    // System audio and the microphone are independent: either, both, or neither
+    // can be live. Toggling either on hides the landing overlay; toggling the
+    // last one off (or pressing stop) returns to it.
+    function syncSourceUi() {
+      if (ui.sysBtn) ui.sysBtn.classList.toggle('on', engine.systemOn);
+      if (ui.micBtn) ui.micBtn.classList.toggle('on', engine.micOn);
+      if (ui.micMenuBtn) ui.micMenuBtn.classList.toggle('on', engine.micOn);
+      if (ui.micLandingBtn) ui.micLandingBtn.classList.toggle('on', engine.micOn);
+    }
+
+    function returnToLanding() {
+      closeMicMenu();
       togglePanel(false);
       hideToast();
-      engine.stop();
       ui.overlay.classList.remove('hidden');
+    }
+    function stopCapture() {
+      engine.stop();
+      returnToLanding();
+    }
+    function returnToLandingIfIdle() {
+      if (!engine.active) returnToLanding();
     }
     ui.fsBtn.addEventListener('click', () => toggleFullscreen());
     ui.stopBtn.addEventListener('click', stopCapture);
 
-    let starting = false; // a held/repeated start key must not open two captures
+    let startingSystem = false; // a held/repeated key must not open two captures
     async function startSystem() {
-      if (starting || webBlocked) return;
-      starting = true;
+      if (startingSystem || webBlocked || engine.systemOn) return;
+      startingSystem = true;
       try {
-        await engine.useSystemAudio();
+        await engine.enableSystem();
         ui.overlay.classList.add('hidden');
       } catch (err) {
         if (err.name === 'NotAllowedError') return; // user cancelled the picker
         showToast((desktop ? 'system audio unavailable: ' : 'tab audio unavailable: ') + err.message, 8);
       } finally {
-        starting = false;
+        startingSystem = false;
       }
     }
-    engine.onSourceEnd = () => {
-      // "Stop sharing" pressed in the browser UI — back to the landing screen
-      togglePanel(false);
-      hideToast();
-      ui.overlay.classList.remove('hidden');
+    function toggleSystem() {
+      if (engine.systemOn) { engine.disableSystem(); returnToLandingIfIdle(); }
+      else startSystem();
+    }
+
+    let startingMic = false;
+    // deviceId omitted → reuse the remembered device (or the OS default)
+    async function startMic(deviceId) {
+      if (startingMic || engine.micOn && deviceId === undefined) return;
+      startingMic = true;
+      try {
+        await engine.enableMic(deviceId === undefined ? engine.micDeviceId : deviceId);
+        ui.overlay.classList.add('hidden');
+      } catch (err) {
+        if (err.name === 'NotAllowedError' || err.name === 'SecurityError') {
+          showToast(desktop && window.orphic.platform === 'darwin'
+            ? 'microphone blocked — allow Microphone for ORPHIC in System Settings → Privacy & Security, then retry'
+            : 'microphone permission was denied — allow it and retry', 8);
+        } else if (err.name === 'NotFoundError' || err.name === 'OverconstrainedError') {
+          showToast('no microphone found', 6);
+        } else {
+          showToast('microphone unavailable: ' + err.message, 8);
+        }
+      } finally {
+        startingMic = false;
+      }
+    }
+    function toggleMic() {
+      if (engine.micOn) { engine.disableMic(); returnToLandingIfIdle(); }
+      else startMic();
+    }
+
+    // ---- mic device picker ----
+    // A small glass popover under the MIC caret. Device names need mic
+    // permission, so before the first grant it shows generic entries; picking
+    // any one grants access, and the next open lists the real names.
+    let micMenuOpen = false;
+    function closeMicMenu() {
+      if (!ui.micMenu) return;
+      ui.micMenu.classList.add('hidden');
+      micMenuOpen = false;
+    }
+    async function openMicMenu() {
+      if (!ui.micMenu) return;
+      await refreshMicMenu();
+      ui.micMenu.classList.remove('hidden');
+      micMenuOpen = true;
+    }
+    function toggleMicMenu() { micMenuOpen ? closeMicMenu() : openMicMenu(); }
+    async function refreshMicMenu() {
+      const list = ui.micMenu.querySelector('.src-menu-list');
+      let mics = [];
+      try { mics = await engine.listMics(); } catch (e) {}
+      list.textContent = '';
+      if (!mics.length) {
+        const empty = document.createElement('div');
+        empty.className = 'src-menu-empty';
+        empty.textContent = 'no microphones found';
+        list.append(empty);
+        return;
+      }
+      const labelled = mics.some(m => m.label);
+      mics.forEach((m, i) => {
+        const row = document.createElement('button');
+        row.className = 'src-menu-row';
+        if (engine.micOn && m.deviceId && m.deviceId === engine.micDeviceId) {
+          row.classList.add('current');
+        }
+        const dot = document.createElement('span');
+        dot.className = 'src-menu-dot';
+        const name = document.createElement('span');
+        name.className = 'src-menu-name';
+        name.textContent = m.label
+          || (m.deviceId === 'default' ? 'system default' : 'microphone ' + (i + 1));
+        row.append(dot, name);
+        row.addEventListener('click', () => {
+          closeMicMenu();
+          startMic(m.deviceId || null);
+        });
+        list.append(row);
+      });
+      if (!labelled) {
+        const hint = document.createElement('div');
+        hint.className = 'src-menu-hint';
+        hint.textContent = 'allow the mic once to see device names';
+        list.append(hint);
+      }
+    }
+    if (ui.micMenuBtn) {
+      ui.micMenuBtn.addEventListener('click', e => { e.stopPropagation(); toggleMicMenu(); });
+    }
+    // keep the picker fresh as mics are plugged in / removed
+    if (navigator.mediaDevices) {
+      navigator.mediaDevices.addEventListener('devicechange', () => {
+        if (micMenuOpen) refreshMicMenu();
+      });
+    }
+    // outside-click closes the picker (its own button stops propagation above)
+    window.addEventListener('click', e => {
+      if (micMenuOpen && !ui.micMenu.contains(e.target)) closeMicMenu();
+    });
+
+    engine.onSourcesChanged = syncSourceUi;
+    engine.onSourceEnd = which => {
+      // a source stopped on its own — browser "Stop sharing", mic unplugged
+      syncSourceUi();
+      if (engine.active) {
+        showToast(which === 'system'
+          ? 'system audio stopped — mic still live' : 'microphone stopped — system audio still live', 4);
+      } else {
+        returnToLanding();
+      }
     };
     engine.onCaptureSilent = () => {
       showToast(desktop && window.orphic.platform === 'darwin'
@@ -454,7 +589,7 @@
     // keyboard
     window.addEventListener('keydown', e => {
       const panelOpen = !ui.panel.classList.contains('hidden');
-      const onLanding = engine.mode === 'none';
+      const onLanding = !engine.active;
       // step to the next/prev scene. On the home screen only the idledrive
       // backdrops are browsable, so the menu never lands on a scene that has
       // no idle state; once capturing, every scene is reachable.
@@ -486,9 +621,12 @@
       else if (e.key === 'k' && media) mediaSend('playpause');
       else if (e.key === 'l' && media) mediaSend('next');
       else if (e.key === 'a') ui.autoBtn.click();
-      else if (e.key === 's') togglePanel();
+      else if (e.key === 's') toggleSystem();   // system audio on/off
+      else if (e.key === 'm') toggleMic();       // microphone on/off
+      else if (e.key === 'g') togglePanel();     // pattern grid
       else if (e.key === 'Escape') {
-        if (panelOpen) togglePanel(false);
+        if (micMenuOpen) closeMicMenu();
+        else if (panelOpen) togglePanel(false);
         // esc that exits fullscreen must never also kill the session
         else if (!onLanding && !document.fullscreenElement) stopCapture();
       }
@@ -502,7 +640,7 @@
 
     // mouse wakes the HUD (not on the landing screen — nothing to control yet)
     window.addEventListener('mousemove', () => {
-      if (engine.mode === 'none') return;
+      if (!engine.active) return;
       hudFade = M.HUD_WAKE_SECONDS;
       ui.hud.classList.remove('asleep');
       ui.helpBar.classList.remove('asleep');
@@ -629,7 +767,7 @@
 
       features.update(dt);
       classifier.update(dt);
-      const idle = engine.mode === 'none';
+      const idle = !engine.active;
       if (idle) idleDrive(dt);
       // silence fallback: when a live source goes truly silent, the groove
       // scenes (grooveScenes — menu backdrops plus murmuration) ease back into
@@ -702,7 +840,7 @@
       }
 
       // auto-cycle scenes; bias switches to land on beats
-      if (autoCycle && M.scenes.length > 1 && engine.mode !== 'none') {
+      if (autoCycle && M.scenes.length > 1 && engine.active) {
         cycleTimer += dt;
         const due = cycleTimer > CYCLE_SECONDS;
         if (due && (features.beat > 0.9 || cycleTimer > CYCLE_SECONDS + 4)) {
