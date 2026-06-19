@@ -190,7 +190,7 @@
 
   const TUPDATE_FRAG = M.FRAG_HEADER + M.GLSL_NOISE + FIELD_LIB + `
   uniform sampler2D uParts;
-  uniform float uDt, uSeed, uGScale, uTotM, uCullR;
+  uniform float uDt, uSeed, uGScale, uTotM, uCullR, uLevelP, uOnsetP;
   void main() {
     vec4 st = texelFetch(uParts, ivec2(gl_FragCoord.xy), 0);
     vec2 p = st.xy, vel = st.zw;
@@ -212,7 +212,12 @@
         acc += uMass[i].z * d / (r2 * sqrt(r2));
       }
     }
-    vel += acc * uGScale * uDt;
+    // music bends spacetime harder: gravity surges with loudness, with the
+    // local band's energy (so each region pulses to its own frequency), and a
+    // brief kick on onsets. It's a reversible force scaling, not energy
+    // injection, so the disk breathes with the music without flying apart.
+    float gMul = 1.0 + uLevelP * 0.30 + specLog(fieldBand(p)) * 0.6 + uOnsetP * 0.35;
+    vel += acc * uGScale * gMul * uDt;
     // NO drag — orbits are conservative so the disk can't slowly collapse
     // (drag compounds over thousands of frames and was draining the swarm)
     p += vel * uDt;
@@ -469,7 +474,7 @@
           pTUpd.use();
           bindField(pTUpd, audio);
           pTUpd.f('uDt', dt).f('uGScale', GSCALE).f('uTotM', totalMass())
-               .f('uCullR', CULLR);
+               .f('uCullR', CULLR).f('uLevelP', sLevel).f('uOnsetP', f.onset);
           for (let it = 0; it < 2; it++) {
             pTUpd.f('uSeed', (t * 60.0 + it * 17.0) % 1000.0 + 0.5)
                  .tex('uParts', tr.read.tex, 0);
