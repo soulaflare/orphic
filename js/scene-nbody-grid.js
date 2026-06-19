@@ -104,11 +104,12 @@
     float fog = smoothstep(uExtent * uRim, uExtent * 0.32, r);
 
     // a calm, music-static web: only gravity warps it. Cool steel that warms
-    // to gold down in the wells (the warp itself moves as the bodies orbit).
+    // toward each well — tinted by THAT sun's band colour, so the fabric picks
+    // up the bodies' colours where they pull on it.
     float well = clamp(-potential(xz) * 0.05, 0.0, 1.5);
     vec3 cool = pal(uKeyHue + 0.58, vec3(0.20, 0.30, 0.42), vec3(0.16, 0.22, 0.30),
                     vec3(1.0), vec3(0.0, 0.15, 0.30));
-    vec3 warm = vec3(1.0, 0.66, 0.32);
+    vec3 warm = bandColor(uBodyBand[nearestBody(xz)], uKeyHue);
     vec3 c = mix(cool, warm, smoothstep(0.0, 1.0, well));
     c *= (0.30 + well * 1.4);
     vCol = c * fog;
@@ -123,8 +124,8 @@
   // ---- the bodies (one POINT per uMass entry) ----
   const BODY_VERT = `#version 300 es
   precision highp float;
-  ` + M.GLSL_COLOR + FIELD_LIB + `
-  uniform float uPx, uKeyHue, uBassP, uTrebleP, uOnsetP;
+  ` + M.GLSL_COLOR + BAND_COLOR + FIELD_LIB + `
+  uniform float uPx, uKeyHue, uOnsetP;
   out vec3 vCol;
   void main() {
     int i = gl_VertexID;
@@ -133,13 +134,13 @@
     vec4 cl = project(wp);
     gl_Position = cl;
     float depth = clamp(7.0 / cl.w, 0.3, 2.4);
-    float w = clamp(mm.z, 0.0, 1.0);
-    // suns react to the music without moving: heavy bodies throb with bass,
-    // light ones shimmer with treble, all flare on onsets
-    float react = 1.0 + uBassP * w * 0.7 + uTrebleP * (1.0 - w) * 0.8 + uOnsetP * 0.6;
-    gl_PointSize = uPx * (0.5 + sqrt(mm.z) * 3.0) * depth * (0.88 + react * 0.22);
-    vec3 hot = mix(vec3(0.7, 0.85, 1.05), vec3(1.0, 0.82, 0.55), w);
-    vCol = hot * (0.8 + min(mm.z, 1.4) * 0.9) * react;
+    // each sun throbs to ITS OWN frequency band and flares on onsets
+    float band = uBodyBand[i];
+    float e = specLog(band);
+    float react = 1.0 + e * 1.4 + uOnsetP * 0.6;
+    gl_PointSize = uPx * (0.5 + sqrt(mm.z) * 3.0) * depth * (0.85 + react * 0.28);
+    vec3 col = mix(bandColor(band, uKeyHue), vec3(1.0), clamp(e * 0.7, 0.0, 0.65));
+    vCol = col * (0.7 + min(mm.z, 1.4) * 0.7) * react;
   }`;
 
   // round soft sprite for the tracer stars
@@ -184,7 +185,7 @@
 
   const TUPDATE_FRAG = M.FRAG_HEADER + M.GLSL_NOISE + FIELD_LIB + `
   uniform sampler2D uParts;
-  uniform float uDt, uSeed, uGScale, uTotM, uSpawnR;
+  uniform float uDt, uSeed, uGScale, uTotM, uSpawnR, uConfK;
   void main() {
     vec4 st = texelFetch(uParts, ivec2(gl_FragCoord.xy), 0);
     vec2 p = st.xy, vel = st.zw;
@@ -192,15 +193,22 @@
     for (int i = 0; i < ${MAXM}; i++) {
       if (i >= uMassN) break;
       vec2 d = uMass[i].xy - p;
-      float r2 = dot(d, d) + uMass[i].w * 2.0;
+      // big softening floor → stars glide over the suns into long stable spiral
+      // orbits instead of plunging in or slingshotting out
+      float r2 = dot(d, d) + uMass[i].w * 4.0 + 0.07;
       acc += uMass[i].z * d / (r2 * sqrt(r2));
     }
+    // a soft confinement wall past the swarm radius keeps stars from escaping
+    // (only beyond uSpawnR, so the inner spiral arms stay untouched)
+    vec2 fromC = p - uCenter;
+    float dC = length(fromC);
+    if (dC > uSpawnR) acc -= fromC / dC * (dC - uSpawnR) * uConfK;
     vel += acc * uGScale * uDt;
-    vel *= 0.9994;
+    vel *= 0.9997;                                  // barely any drag → spirals persist
     p += vel * uDt;
-    // keep the swarm bound to the followed centre so the stars never get lost
+    // last-resort respawn (rare): flung way out, or fallen into a core
     float rr = length(p - uCenter);
-    if (rr > uSpawnR * 1.5 || rr < 0.04) {
+    if (rr > uSpawnR * 1.7 || rr < 0.03) {
       vec2 s = gl_FragCoord.xy + uSeed;
       vec2 u = hash22(s);
       float ang = u.x * 6.28318, rad = (0.4 + u.y * 0.6) * uSpawnR;
@@ -215,7 +223,7 @@
   precision highp float;
   uniform sampler2D uParts;
   uniform int uDim;
-  ` + M.GLSL_COLOR + M.GLSL_NOISE + FIELD_LIB + `
+  ` + M.GLSL_COLOR + M.GLSL_NOISE + BAND_COLOR + FIELD_LIB + `
   uniform float uKeyHue, uPx, uShimmer, uBeat, uTime4;
   out vec3 vCol;
   void main() {
@@ -227,25 +235,21 @@
     gl_Position = cl;
     float depth = clamp(6.0 / cl.w, 0.4, 2.2);
     float spd = length(st.zw);
-    float rad = length(xz - uCenter);
     float h = hash12(vec2(tc) + 0.5);
 
-    // each star sings a frequency band set by its orbital radius: inner stars
-    // (near the suns) ride the bass, outer ones the treble — so the orbiting
-    // swarm becomes a living spectral halo
-    float band = clamp((rad - 0.6) / 1.8, 0.0, 1.0);
+    // each star takes on the aspect of the sun whose well it orbits: it adopts
+    // that sun's frequency band and colour, and pulses when that band is loud
+    float band = uBodyBand[nearestBody(xz)];
     float e = specLog(band);
     float loud = e * e;
     // twinkle — faster and brighter with treble
     float tw = 0.6 + 0.4 * sin(uTime4 * (1.5 + h * 4.0) + h * 40.0) * (0.6 + uShimmer);
-    float react = 0.35 + loud * 3.2 + uBeat * 0.4;          // flares when its band is loud
+    float react = 0.4 + loud * 3.0 + uBeat * 0.35;
 
-    vec3 cool = pal(uKeyHue + 0.55 - band * 0.28, vec3(0.45), vec3(0.45),
-                    vec3(1.0), vec3(0.0, 0.2, 0.4));
-    vec3 hot = vec3(1.0, 0.85, 0.6);
-    vec3 c = mix(cool, hot, clamp(loud * 1.8 + spd * 0.25, 0.0, 1.0));
-    vCol = c * (0.4 + spd * 0.5) * react * tw;
-    gl_PointSize = uPx * depth * (0.5 + h * 0.7 + loud * 1.8);  // swells when band is loud
+    vec3 col = mix(bandColor(band, uKeyHue), vec3(1.0, 0.96, 0.88),
+                   clamp(loud * 0.9 + spd * 0.12, 0.0, 0.6));   // keep the band colour
+    vCol = col * (0.5 + spd * 0.45) * react * tw;
+    gl_PointSize = uPx * depth * (0.5 + h * 0.7 + loud * 1.7);  // swells when band is loud
   }`;
 
   const FADE_FRAG = M.FRAG_HEADER + `
@@ -289,8 +293,10 @@
       const emptyVAO = gl.createVertexArray();
       const trVAO = gl.createVertexArray();
 
-      const EXTENT = 7.0, DEPTH = 0.42, MAXDIP = 3.0, SPAWNR = 2.0;
+      const EXTENT = 7.0, DEPTH = 0.42, MAXDIP = 3.0, SPAWNR = 2.6;
       const massBuf = new Float32Array(MAXM * 4);
+      const bandBuf = new Float32Array(MAXM);     // each body's frequency band
+      const BANDS = [0.12, 0.5, 0.85];            // bass · mid · treble
       let glow = null, seeded = false, keyHue = 0;
       let az = 0.4, camDist = 2.9, camH = 2.3;
       let cx = 0, cz = 0;                          // smoothed followed centre
@@ -306,11 +312,12 @@
         bodies.length = 0;
         const D = 1.35, m = 1.0;
         const vy = Math.sqrt(GSCALE * m / (2 * D));           // circular binary
-        bodies.push({ x: -D / 2, z: 0, vx: 0, vz: vy, m, soft: softFor(m) });
-        bodies.push({ x:  D / 2, z: 0, vx: 0, vz: -vy, m, soft: softFor(m) });
+        // the two suns own different bands (bass + mid), the companion the treble
+        bodies.push({ x: -D / 2, z: 0, vx: 0, vz: vy, m, soft: softFor(m), band: BANDS[0] });
+        bodies.push({ x:  D / 2, z: 0, vx: 0, vz: -vy, m, soft: softFor(m), band: BANDS[1] });
         const R = 2.5, mc = 0.3;
         const vc = Math.sqrt(GSCALE * (2 * m) / R);
-        bodies.push({ x: 0, z: R, vx: -vc, vz: 0, m: mc, soft: softFor(mc) });
+        bodies.push({ x: 0, z: R, vx: -vc, vz: 0, m: mc, soft: softFor(mc), band: BANDS[2] });
         recenter();
       }
       // pin the centre of mass to the origin (position AND velocity) so the
@@ -364,13 +371,14 @@
           const b = bodies[i];
           massBuf[i * 4] = b.x; massBuf[i * 4 + 1] = b.z;
           massBuf[i * 4 + 2] = b.m; massBuf[i * 4 + 3] = b.soft * b.soft;
+          bandBuf[i] = b.band;
         }
         return n;
       }
 
       function bindField(prog, audio) {
         const n = packMasses();
-        prog.f4v('uMass', massBuf).i('uMassN', n)
+        prog.f4v('uMass', massBuf).fv('uBodyBand', bandBuf).i('uMassN', n)
             .f('uDepth', DEPTH).f('uExtent', EXTENT).f('uMaxDip', MAXDIP)
             .v2('uCenter', cx, cz)
             .v3('uCamPos', cx + Math.sin(az) * camDist, camH, cz + Math.cos(az) * camDist)
@@ -433,7 +441,7 @@
               x: Math.cos(ang) * r, z: Math.sin(ang) * r,
               vx: -Math.sin(ang) * vt - Math.cos(ang) * 0.25,
               vz: Math.cos(ang) * vt - Math.sin(ang) * 0.25,
-              m, soft: softFor(m),
+              m, soft: softFor(m), band: BANDS[bodies.length % BANDS.length],
             });
             burstCD = 4.0;
           }
@@ -442,7 +450,7 @@
           pTUpd.use();
           bindField(pTUpd, audio);
           pTUpd.f('uDt', dt).f('uGScale', GSCALE).f('uTotM', totalMass())
-               .f('uSpawnR', SPAWNR);
+               .f('uSpawnR', SPAWNR).f('uConfK', 2.0);
           for (let it = 0; it < 2; it++) {
             pTUpd.f('uSeed', (t * 60.0 + it * 17.0) % 1000.0 + 0.5)
                  .tex('uParts', tr.read.tex, 0);
@@ -489,8 +497,7 @@
           const nMass = packMasses();
           pBody.use();
           bindField(pBody, audio);
-          pBody.f('uKeyHue', keyHue).f('uPx', 13.0)
-               .f('uBassP', s.sBass).f('uTrebleP', s.sTreble).f('uOnsetP', f.onset)
+          pBody.f('uKeyHue', keyHue).f('uPx', 13.0).f('uOnsetP', f.onset)
                .f('uBright', (0.65 + f.level * 0.4) * dim + s.flare * 0.6);
           pBody.bind();
           gl.bindVertexArray(emptyVAO);
