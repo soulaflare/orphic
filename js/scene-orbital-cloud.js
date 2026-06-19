@@ -164,7 +164,7 @@
   uniform float uBright;
   void main() {
     vec2 pc = gl_PointCoord - 0.5;
-    float a = exp(-dot(pc, pc) * 8.0);
+    float a = exp(-dot(pc, pc) * 16.0); // tighter points → crisper cloud texture
     fragColor = vec4(vCol * a * uBright, 1.0);
   }`;
 
@@ -175,7 +175,7 @@
   const SHOW_FRAG = M.FRAG_HEADER + M.GLSL_COLOR + `
   uniform sampler2D uTex, uBloom;
   void main() {
-    vec3 c = texture(uTex, vUV).rgb + texture(uBloom, vUV).rgb * 0.6;
+    vec3 c = texture(uTex, vUV).rgb + texture(uBloom, vUV).rgb * 0.38;
     float v = length(vUV - 0.5);
     c *= 1.0 - v * v * 0.72;
     fragColor = vec4(aces(c), 1.0);
@@ -271,8 +271,8 @@
           const sizeNorm = n * n * 3.0 + 2.5;
           const breath = 1.0 + f.bass * 0.55 + 0.12 * Math.sin(f.phaseBass * 0.1);
 
-          // 1. fade previous frame (phosphor trails as walkers migrate)
-          pFade.use().f('uDecay', 0.78).tex('uPrev', glow.read.tex, 0);
+          // 1. fade previous frame (light phosphor trail as walkers migrate)
+          pFade.use().f('uDecay', 0.6).tex('uPrev', glow.read.tex, 0);
           glc.draw(pFade, glow.write);
 
           // 2. additively splat the walkers into the faded frame
@@ -284,7 +284,7 @@
             .f('uSizeNorm', sizeNorm).f('uAspect', aspect).f('uPointBase', 2.0)
             .f('uKeyHue', keyHue).f('uShimmer', shimmer)
             .f('uColEnergy', 0.6 + f.harmonic * 0.8)
-            .f('uBright', 0.05 * (0.7 + f.harmonic * 1.1 + f.level * 0.5) + collapse * 0.12);
+            .f('uBright', 0.075 * (0.7 + f.harmonic * 1.1 + f.level * 0.5) + collapse * 0.16);
           M.spectrumUniforms(pDeposit, audio, 3);
           pDeposit.tex('uParts', parts.read.tex, 0).bind();
           gl.enable(gl.BLEND);
@@ -295,7 +295,7 @@
           glow.swap();
 
           // 3. bloom + composite
-          bloom.render(glow.read.tex, glc.width, glc.height, 0.3);
+          bloom.render(glow.read.tex, glc.width, glc.height, 0.5);
           pShow.use().tex('uTex', glow.read.tex, 0).tex('uBloom', bloom.tex, 1);
           glc.draw(pShow, out);
         },
