@@ -196,6 +196,7 @@
       let A = { n: 2, l: 1, m: 0 };
       let B = { n: 2, l: 1, m: 0 };
       let transitioning = false, tw = 0, w = 0;
+      let resting = false, excite = 0; // silent-mode ground state + return flash
 
       function seedField(field) {
         pInit.use().f('uSeed', Math.random() * 100).i('uN', A.n);
@@ -214,7 +215,12 @@
       }
       function startTransition(f) {
         B = newOrbital(f);
-        tw = 0; transitioning = true; cooldown = 3.0; lastRich = richness;
+        tw = 0; transitioning = true; cooldown = 3.0; lastRich = richness; resting = false;
+      }
+      // silent mode: relax toward the ground state (a calm 2s sphere)
+      function relaxToGround() {
+        B = { n: 2, l: 0, m: 0 };
+        tw = 0; transitioning = true; resting = true; cooldown = 2.0;
       }
 
       // run the Metropolis sim for one field at a given step (shared state must
@@ -266,14 +272,23 @@
           richness += (richRaw - richness) * (1 - Math.exp(-dt / 1.3));
           register += ((0.45 * f.pitchNorm + 0.55 * f.centroid) - register) * (1 - Math.exp(-dt / 2.0));
 
-          yaw += dt * (0.18 + f.level * 0.7);
+          yaw += dt * (0.18 * (1 - 0.5 * f.quiet) + f.level * 0.7); // idle: slow drift
           tilt += dt * 0.04 * Math.sin(f.phaseLevel * 0.04);
           phi += dt * (3.5 + f.level * 6.0);
+          excite *= Math.exp(-dt / 0.7); // return-flash envelope decays
 
           cooldown -= dt;
-          if (!transitioning && cooldown <= 0 &&
-              (f.burst === 1 || f.beat > 0.9 || Math.abs(richness - lastRich) > 0.25))
-            startTransition(f);
+          if (f.quiet > 0.6) {
+            // silence: the electron relaxes to its ground state (once)
+            if (!resting && !transitioning) relaxToGround();
+          } else if (f.quiet < 0.4 && !transitioning) {
+            // music playing: excite up. A return from rest always fires and
+            // flashes; otherwise transition on real moments, gated by cooldown.
+            if (resting && f.burst === 1) { startTransition(f); excite = 1; }
+            else if (cooldown <= 0 &&
+                     (f.burst === 1 || f.beat > 0.9 || Math.abs(richness - lastRich) > 0.25))
+              startTransition(f);
+          }
           if (transitioning) {
             tw += dt / 0.9;
             if (tw >= 1) { A = { ...B }; transitioning = false; tw = 0; }
@@ -297,7 +312,9 @@
           const aspect = glc.width / glc.height;
           const nEff2 = A.n * A.n + (B.n * B.n - A.n * A.n) * w;
           const sizeNorm = nEff2 * 1.8 + 2.0;
-          const breath = 1.0 + f.bass * 0.22 + 0.06 * Math.sin(f.phaseBass * 0.1);
+          // breathe with bass; in silence a slow autonomous zero-point pulse
+          const breath = 1.0 + f.bass * 0.22 + 0.06 * Math.sin(f.phaseBass * 0.1)
+                       + f.quiet * 0.12 * Math.sin(t * 0.7);
           const transFlash = transitioning ? 4 * w * (1 - w) * 0.05 : 0;
 
           // 1. fade previous frame (soft phosphor glow)
@@ -309,12 +326,14 @@
           gl.viewport(0, 0, glow.write.w, glow.write.h);
           gl.enable(gl.BLEND);
           gl.blendFunc(gl.ONE, gl.ONE);
-          // BODY — calm, evenly lit, defined
+          // BODY — calm, evenly lit, defined. In silence keep a soft glowing
+          // ground-state sphere (quiet floor + gentle pulse); flash on return.
           drawField(body, bodyVAO, DIM_BODY, {
             aspect, sizeNorm, breath, pointBase: 2.0,
             colEnergy: 0.6 + f.harmonic * 0.8,
             glowBase: 0.8, tipGain: 0.5, whiten: 0.35, hueBias: 0.0,
-            bright: 0.05 * (0.7 + f.harmonic * 1.0 + f.level * 0.6) + transFlash,
+            bright: 0.05 * (0.7 + f.harmonic * 1.0 + f.level * 0.6) + transFlash
+                  + f.quiet * (0.05 + 0.02 * Math.sin(t * 0.9)) + excite * 0.18,
           }, audio);
           // SKIN — agitated, mostly dark, lit by the live spectrum, onset-pulsed.
           // base stays dark (definition-safe); pronounced via tip lighting, the
@@ -323,8 +342,9 @@
           drawField(skin, skinVAO, DIM_SKIN, {
             aspect, sizeNorm, breath: breath * (1.1 + f.onset * 0.38), pointBase: 3.2,
             colEnergy: 0.85 + f.treble * 1.1,
-            glowBase: 0.1, tipGain: 1.9, whiten: 0.7, hueBias: 0.13,
-            bright: 0.045 * (0.5 + f.treble * 1.4 + f.level * 0.85) + f.onset * 0.06,
+            glowBase: 0.1 + f.quiet * 0.12, tipGain: 1.9, whiten: 0.7, hueBias: 0.13,
+            bright: 0.045 * (0.5 + f.treble * 1.4 + f.level * 0.85) + f.onset * 0.06
+                  + f.quiet * 0.015 + excite * 0.06,
           }, audio);
           gl.disable(gl.BLEND);
           glow.swap();
