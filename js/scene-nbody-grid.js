@@ -73,12 +73,15 @@
     return vec4(xc * uFocal / uAspect, yc * uFocal, 0.0, zc);
   }`;
 
-  // a distinct, key-tinted colour per frequency band: bass→gold, mid→green/teal,
-  // treble→blue/violet. (needs pal from GLSL_COLOR — include after it.)
+  // a cohesive stellar-temperature colour per band: bass = warm ember, mid =
+  // gold-white, treble = hot blue-white (like real star colours by temperature)
   const BAND_COLOR = `
-  vec3 bandColor(float band, float keyHue) {
-    return pal(keyHue * 0.35 + 0.04 + band * 0.52, vec3(0.5), vec3(0.5),
-               vec3(1.0), vec3(0.0, 0.25, 0.5));
+  vec3 bandColor(float band) {
+    vec3 ember = vec3(1.0, 0.42, 0.16);   // bass   — cool red giant / ember
+    vec3 gold  = vec3(1.0, 0.90, 0.72);   // mid    — gold-white
+    vec3 blue  = vec3(0.52, 0.72, 1.0);   // treble — hot blue-white
+    return band < 0.5 ? mix(ember, gold, band * 2.0)
+                      : mix(gold, blue, (band - 0.5) * 2.0);
   }`;
 
   // ---- the warped fabric (GL_LINES generated from gl_VertexID) ----
@@ -110,9 +113,8 @@
     // toward each well — tinted by THAT sun's band colour, so the fabric picks
     // up the bodies' colours where they pull on it.
     float well = clamp(-potential(xz) * 0.05, 0.0, 1.5);
-    vec3 cool = pal(uKeyHue + 0.58, vec3(0.20, 0.30, 0.42), vec3(0.16, 0.22, 0.30),
-                    vec3(1.0), vec3(0.0, 0.15, 0.30));
-    vec3 warm = bandColor(fieldBand(xz), uKeyHue);
+    vec3 cool = vec3(0.16, 0.24, 0.40);                  // steel-blue web
+    vec3 warm = bandColor(fieldBand(xz));                // wells take their sun's colour
     vec3 c = mix(cool, warm, smoothstep(0.0, 1.0, well));
     c *= (0.30 + well * 1.4);
     vCol = c * fog;
@@ -142,7 +144,7 @@
     float e = specLog(band);
     float react = 1.0 + e * 1.4 + uOnsetP * 0.6;
     gl_PointSize = uPx * (0.5 + sqrt(mm.z) * 3.0) * depth * (0.85 + react * 0.28);
-    vec3 col = mix(bandColor(band, uKeyHue), vec3(1.0), clamp(e * 0.7, 0.0, 0.65));
+    vec3 col = mix(bandColor(band), vec3(1.0), clamp(e * 0.7, 0.0, 0.65));
     vCol = col * (0.7 + min(mm.z, 1.4) * 0.7) * react;
   }`;
 
@@ -188,37 +190,45 @@
 
   const TUPDATE_FRAG = M.FRAG_HEADER + M.GLSL_NOISE + FIELD_LIB + `
   uniform sampler2D uParts;
-  uniform float uDt, uSeed, uGScale, uTotM, uSpawnR, uConfK;
+  uniform float uDt, uSeed, uGScale, uTotM, uCullR;
   void main() {
     vec4 st = texelFetch(uParts, ivec2(gl_FragCoord.xy), 0);
     vec2 p = st.xy, vel = st.zw;
-    vec2 acc = vec2(0.0);
-    for (int i = 0; i < ${MAXM}; i++) {
-      if (i >= uMassN) break;
-      vec2 d = uMass[i].xy - p;
-      // big softening floor → stars glide over the suns into long stable spiral
-      // orbits instead of plunging in or slingshotting out
-      float r2 = dot(d, d) + uMass[i].w * 4.0 + 0.07;
-      acc += uMass[i].z * d / (r2 * sqrt(r2));
+    // two populations (fixed per particle) → structure with chaos riding on it:
+    //   ORBITERS feel only the smooth central mass → stable circumbinary disk
+    //   FIGHTERS feel the real two-sun field → dive, weave and get slingshot
+    float kind = hash12(gl_FragCoord.xy + 7.0);
+    vec2 acc;
+    if (kind < 0.45) {
+      vec2 dc = uCenter - p;
+      float rc2 = dot(dc, dc) + 0.25;
+      acc = uTotM * dc / (rc2 * sqrt(rc2));
+    } else {
+      acc = vec2(0.0);
+      for (int i = 0; i < ${MAXM}; i++) {
+        if (i >= uMassN) break;
+        vec2 d = uMass[i].xy - p;
+        float r2 = dot(d, d) + uMass[i].w * 1.5 + 0.025;   // sharper → real chaos
+        acc += uMass[i].z * d / (r2 * sqrt(r2));
+      }
     }
-    // a soft confinement wall past the swarm radius keeps stars from escaping
-    // (only beyond uSpawnR, so the inner spiral arms stay untouched)
-    vec2 fromC = p - uCenter;
-    float dC = length(fromC);
-    if (dC > uSpawnR) acc -= fromC / dC * (dC - uSpawnR) * uConfK;
     vel += acc * uGScale * uDt;
-    // distance-scaled drag: inner spirals glide freely; the outskirts bleed
-    // energy and fall back, so the swarm stays dense instead of dispersing
-    vel *= mix(0.9997, 0.988, smoothstep(uSpawnR * 0.55, uSpawnR * 1.1, dC));
+    // NO drag — orbits are conservative so the disk can't slowly collapse
+    // (drag compounds over thousands of frames and was draining the swarm)
     p += vel * uDt;
-    // last-resort respawn (rare): flung way out, or fallen into a core
+    // recycle: a star that drifts past the (faded) cull radius or falls into a
+    // core is reborn in the suns' neighbourhood on a stable circumbinary orbit —
+    // so it sweeps around BOTH bodies, density stays high, and the spread of
+    // radii shears into spiral arms
+    // recycle when flung past the cull radius OR drawn too near the centre, so
+    // stars never pile up in the middle under the suns
     float rr = length(p - uCenter);
-    if (rr > uSpawnR * 1.7 || rr < 0.03) {
+    if (rr > uCullR || rr < 0.45) {
       vec2 s = gl_FragCoord.xy + uSeed;
       vec2 u = hash22(s);
-      float ang = u.x * 6.28318, rad = (0.4 + u.y * 0.6) * uSpawnR;
+      float ang = u.x * 6.28318, rad = 1.0 + u.y * 1.5;        // a clear ring near the bodies
       p = uCenter + vec2(cos(ang), sin(ang)) * rad;
-      float vmag = sqrt(uGScale * uTotM / max(rad, 0.2)) * (0.9 + hash12(s + 4.0) * 0.2);
+      float vmag = sqrt(uGScale * uTotM / rad) * (0.92 + hash12(s + 4.0) * 0.16);
       vel = vec2(-sin(ang), cos(ang)) * vmag;
     }
     fragColor = vec4(p, vel);
@@ -229,7 +239,7 @@
   uniform sampler2D uParts;
   uniform int uDim;
   ` + M.GLSL_COLOR + M.GLSL_NOISE + BAND_COLOR + FIELD_LIB + `
-  uniform float uKeyHue, uPx, uShimmer, uBeat, uTime4;
+  uniform float uKeyHue, uPx, uShimmer, uBeat, uTime4, uCullR;
   out vec3 vCol;
   void main() {
     ivec2 tc = ivec2(gl_VertexID % uDim, gl_VertexID / uDim);
@@ -240,6 +250,7 @@
     gl_Position = cl;
     float depth = clamp(6.0 / cl.w, 0.4, 2.2);
     float spd = length(st.zw);
+    float rad = length(xz - uCenter);
     float h = hash12(vec2(tc) + 0.5);
 
     // each star takes on the aspect of the suns whose wells it orbits: it adopts
@@ -250,10 +261,12 @@
     // twinkle — faster and brighter with treble
     float tw = 0.6 + 0.4 * sin(uTime4 * (1.5 + h * 4.0) + h * 40.0) * (0.6 + uShimmer);
     float react = 0.4 + loud * 3.0 + uBeat * 0.35;
+    // fade out toward the cull radius so stars dim away gracefully (no popping)
+    float fade = smoothstep(uCullR, uCullR * 0.65, rad);
 
-    vec3 col = mix(bandColor(band, uKeyHue), vec3(1.0, 0.96, 0.88),
-                   clamp(loud * 0.9 + spd * 0.12, 0.0, 0.6));   // keep the band colour
-    vCol = col * (0.5 + spd * 0.45) * react * tw;
+    vec3 col = mix(bandColor(band), vec3(1.0, 0.96, 0.88),
+                   clamp(loud * 0.5 + spd * 0.07, 0.0, 0.4));   // keep the stellar colour
+    vCol = col * (0.5 + spd * 0.45) * react * tw * fade;
     gl_PointSize = uPx * depth * (0.5 + h * 0.7 + loud * 1.7);  // swells when band is loud
   }`;
 
@@ -298,10 +311,10 @@
       const emptyVAO = gl.createVertexArray();
       const trVAO = gl.createVertexArray();
 
-      const EXTENT = 7.0, DEPTH = 0.42, MAXDIP = 3.0, SPAWNR = 2.6;
+      const EXTENT = 7.0, DEPTH = 0.42, MAXDIP = 3.0, SPAWNR = 2.0, CULLR = 3.6;
       const massBuf = new Float32Array(MAXM * 4);
       const bandBuf = new Float32Array(MAXM);     // each body's frequency band
-      const BANDS = [0.12, 0.5, 0.85];            // bass · mid · treble
+      const BANDS = [0.1, 0.5, 0.9];              // bass(ember) · mid(gold) · treble(blue)
       let glow = null, seeded = false, keyHue = 0;
       let az = 0.4, camDist = 2.9, camH = 2.3;
       let cx = 0, cz = 0;                          // smoothed followed centre
@@ -317,12 +330,13 @@
         bodies.length = 0;
         const D = 1.35, m = 1.0;
         const vy = Math.sqrt(GSCALE * m / (2 * D));           // circular binary
-        // the two suns own different bands (bass + mid), the companion the treble
+        // the two suns get contrasting bands (bass=ember vs treble=blue), the
+        // companion the mid (gold) — strong warm/cool colour split on the pair
         bodies.push({ x: -D / 2, z: 0, vx: 0, vz: vy, m, soft: softFor(m), band: BANDS[0] });
-        bodies.push({ x:  D / 2, z: 0, vx: 0, vz: -vy, m, soft: softFor(m), band: BANDS[1] });
+        bodies.push({ x:  D / 2, z: 0, vx: 0, vz: -vy, m, soft: softFor(m), band: BANDS[2] });
         const R = 2.5, mc = 0.3;
         const vc = Math.sqrt(GSCALE * (2 * m) / R);
-        bodies.push({ x: 0, z: R, vx: -vc, vz: 0, m: mc, soft: softFor(mc), band: BANDS[2] });
+        bodies.push({ x: 0, z: R, vx: -vc, vz: 0, m: mc, soft: softFor(mc), band: BANDS[1] });
         recenter();
       }
       // pin the centre of mass to the origin (position AND velocity) so the
@@ -455,7 +469,7 @@
           pTUpd.use();
           bindField(pTUpd, audio);
           pTUpd.f('uDt', dt).f('uGScale', GSCALE).f('uTotM', totalMass())
-               .f('uSpawnR', SPAWNR).f('uConfK', 3.5);
+               .f('uCullR', CULLR);
           for (let it = 0; it < 2; it++) {
             pTUpd.f('uSeed', (t * 60.0 + it * 17.0) % 1000.0 + 0.5)
                  .tex('uParts', tr.read.tex, 0);
@@ -492,7 +506,7 @@
           bindField(pTracer, audio);
           pTracer.i('uDim', DIM_T).f('uKeyHue', keyHue).f('uPx', 3.2)
                  .f('uShimmer', s.sTreble * 1.1 + s.flare).f('uBeat', f.beat).f('uTime4', t)
-                 .f('uBright', (0.6 + s.sLevel * 0.25) * dim)
+                 .f('uCullR', CULLR).f('uBright', (0.6 + s.sLevel * 0.25) * dim)
                  .f('uFalloff', 3.0);
           pTracer.tex('uParts', tr.read.tex, 0).bind();
           gl.bindVertexArray(trVAO);
