@@ -287,7 +287,7 @@
             .i('uNB', B.n).i('uLB', B.l).i('uMB', B.m).i('uNmax', nmax)
             .f('uW', w).f('uC', Math.cos(phi));
           const stepBody = (0.10 * nmax * nmax + 0.12) * (1.0 + f.level * 0.25);
-          const stepSkin = stepBody * (2.0 + f.onset * 2.5 + f.treble * 1.0); // agitated → twinkle
+          const stepSkin = stepBody * (1.9 + f.onset * 2.1 + f.treble * 0.85); // agitated → twinkle
           stepField(body, bodyVAO, stepBody, 3, t);
           stepField(skin, skinVAO, stepSkin, 2, t + 11.0);
         },
@@ -321,10 +321,10 @@
           // onset halo expansion, twinkle and hue separation — with tipGain/
           // whiten/bright dialed back a notch so it reads strong but not busy.
           drawField(skin, skinVAO, DIM_SKIN, {
-            aspect, sizeNorm, breath: breath * (1.12 + f.onset * 0.45), pointBase: 3.2,
-            colEnergy: 0.9 + f.treble * 1.3,
-            glowBase: 0.1, tipGain: 2.2, whiten: 0.85, hueBias: 0.15,
-            bright: 0.05 * (0.5 + f.treble * 1.6 + f.level * 0.9) + f.onset * 0.07,
+            aspect, sizeNorm, breath: breath * (1.1 + f.onset * 0.38), pointBase: 3.2,
+            colEnergy: 0.85 + f.treble * 1.1,
+            glowBase: 0.1, tipGain: 1.9, whiten: 0.7, hueBias: 0.13,
+            bright: 0.045 * (0.5 + f.treble * 1.4 + f.level * 0.85) + f.onset * 0.06,
           }, audio);
           gl.disable(gl.BLEND);
           glow.swap();
