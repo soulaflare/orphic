@@ -23,7 +23,7 @@
   const MARCH_FRAG = M.FRAG_HEADER + M.GLSL_LIB + M.GLSL_AUDIO + M.GLSL_SPECTRUM + `
   uniform vec2 uRes;
   uniform vec3 uCamPos, uCamTarget;
-  uniform float uFov, uLens, uDiskBright, uSpin, uKeyHue, uRing, uPhoton;
+  uniform float uFov, uLens, uDiskBright, uSpin, uKeyHue, uPhoton;
 
   // geometry, in units of the Schwarzschild radius (horizon = 1)
   const float RIN  = 3.2;   // inner disk edge (~ISCO)
@@ -84,9 +84,6 @@
     dcol += vec3(0.25, 0.45, 1.0) * max(beam, 0.0) * 0.45;     // approaching → bluer
     dcol *= 1.0 + max(-beam, 0.0) * 0.3;                       // (receding kept dim)
     dcol = mix(dcol, dcol * vec3(1.15, 0.6, 0.35), max(-beam, 0.0) * 0.5); // → redder
-
-    // beat shockwave shell expanding outward through the disk
-    if (uRing > 0.0) dcol += vec3(1.0, 0.95, 0.9) * exp(-pow((r - uRing) * 2.4, 2.0)) * 2.2;
 
     return max(dcol, 0.0) * dens * uDiskBright;
   }
@@ -167,7 +164,6 @@
       let buf = null;
       let keyHue = 0;
       let spin = 0;
-      let ring = -1;           // beat shockwave radius in the disk (-1 = idle)
 
       return {
         resize(w, h) {
@@ -182,12 +178,6 @@
           if (ar.update(dt)) this.resize(glc.width, glc.height);
           // disk rotation rides the loudness phase accumulator (not raw amp)
           spin += dt * (0.25 + f.level * 2.6 + f.bass * 1.2);
-          // beats fire a shockwave shell that races out through the disk
-          if ((f.beat > 0.9 || f.burst === 1) && ring < 0) ring = 3.5;
-          if (ring >= 0) {
-            ring += dt * 9.0;
-            if (ring > 13.0) ring = -1;
-          }
         },
         render(out, audio, t) {
           if (!buf) this.resize(glc.width, glc.height);
@@ -214,7 +204,6 @@
                 .f('uDiskBright', (0.62 + f.level * 0.8) * (1.0 - f.quiet * 0.78) + f.burst * 1.2)
                 .f('uSpin', spin)
                 .f('uKeyHue', keyHue)
-                .f('uRing', ring)
                 .f('uPhoton', 0.5 + f.level * 0.7 + f.beat * 0.8 + f.treble * 0.4);
           glc.draw(pMarch, buf);
 
