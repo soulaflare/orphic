@@ -77,11 +77,11 @@
   // gold-white, treble = hot blue-white (like real star colours by temperature)
   const BAND_COLOR = `
   vec3 bandColor(float band) {
-    vec3 ember = vec3(1.0, 0.42, 0.16);   // bass   — cool red giant / ember
+    vec3 ember = vec3(1.0, 0.42, 0.16);   // bass   — warm ember orange
     vec3 gold  = vec3(1.0, 0.90, 0.72);   // mid    — gold-white
-    vec3 blue  = vec3(0.52, 0.72, 1.0);   // treble — hot blue-white
+    vec3 red   = vec3(0.95, 0.13, 0.22);  // treble — crimson red
     return band < 0.5 ? mix(ember, gold, band * 2.0)
-                      : mix(gold, blue, (band - 0.5) * 2.0);
+                      : mix(gold, red, (band - 0.5) * 2.0);
   }`;
 
   // ---- the warped fabric (GL_LINES generated from gl_VertexID) ----
