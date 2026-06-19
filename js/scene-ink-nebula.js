@@ -66,7 +66,7 @@
     force /= length(force) + 1e-4;
     force *= uStrength * C * vec2(1, -1);
     vec2 vel = texture(uVelocity, vUV).xy + force * uDt;
-    fragColor = vec4(clamp(vel, -3800.0, 3800.0), 0.0, 1.0);
+    fragColor = vec4(clamp(vel, -2200.0, 2200.0), 0.0, 1.0);
   }`;
 
   const DIVERGENCE = H + `
@@ -245,7 +245,7 @@
               const ang = atkAngle + (Math.random() - 0.5) * 0.22; // tight jitter → one direction
               const cs = Math.cos(ang), sn = Math.sin(ang);
               const jx = 0.5 - cs * 0.45, jy = 0.5 - sn * 0.45;    // enter from the trailing edge
-              const sp = 1700 * (0.3 + f.bass * 1.6);              // gentle when quiet, blistering on hits
+              const sp = 1300 * (0.3 + f.bass * 0.9);              // gentle when quiet, restrained on hits
               // velocity-only "clear" jet: sweeps the existing clean ink across
               // rather than smearing broad new dye — the visible ink stays the
               // crisp emitter orbs and streaks
