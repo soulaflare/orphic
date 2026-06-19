@@ -89,7 +89,7 @@
   precision highp float;
   ` + M.GLSL_COLOR + M.GLSL_NOISE + BAND_COLOR + FIELD_LIB + `
   uniform int uG;
-  uniform float uKeyHue, uRim;
+  uniform float uKeyHue, uRim, uGwPhase, uGwK, uGwAmp;
   out vec3 vCol;
   void main() {
     int v = gl_VertexID;
@@ -104,19 +104,27 @@
     vec2 xz = uCenter + tile;
     float r = length(tile);
     float y = sheetY(xz);
+
+    // gravitational waves: the orbiting binary radiates a two-armed spiral
+    // ripple that travels outward, filling the open fabric with motion. It's
+    // orbit-driven (continuous, not beat-flashing) and swells gently with energy.
+    float th = atan(tile.y, tile.x);
+    float gwEnv = smoothstep(0.5, 2.2, r) / (1.0 + r * 0.28);
+    float gwPh = 2.0 * th + uGwK * r - uGwPhase;
+    y += sin(gwPh) * uGwAmp * gwEnv;
+
     gl_Position = project(vec3(xz.x, y, xz.y));
 
     // radial fade hides the tile's square edges → fabric melts into the dark
     float fog = smoothstep(uExtent * uRim, uExtent * 0.32, r);
 
-    // a calm, music-static web: only gravity warps it. Cool steel that warms
-    // toward each well — tinted by THAT sun's band colour, so the fabric picks
-    // up the bodies' colours where they pull on it.
+    // steel-blue web that warms toward each well, tinted by THAT sun's colour
     float well = clamp(-potential(xz) * 0.05, 0.0, 1.5);
-    vec3 cool = vec3(0.16, 0.24, 0.40);                  // steel-blue web
-    vec3 warm = bandColor(fieldBand(xz));                // wells take their sun's colour
+    vec3 cool = vec3(0.16, 0.24, 0.40);
+    vec3 warm = bandColor(fieldBand(xz));
     vec3 c = mix(cool, warm, smoothstep(0.0, 1.0, well));
     c *= (0.30 + well * 1.4);
+    c += cool * max(sin(gwPh), 0.0) * gwEnv * uGwAmp * 7.0;   // wavefronts glow faintly
     vCol = c * fog;
   }`;
 
@@ -321,7 +329,7 @@
       const bandBuf = new Float32Array(MAXM);     // each body's frequency band
       const BANDS = [0.1, 0.5, 0.9];              // bass(ember) · mid(gold) · treble(blue)
       let glow = null, seeded = false, keyHue = 0;
-      let az = 0.4, camDist = 2.9, camH = 2.3;
+      let az = 0.4, camDist = 3.2, camH = 2.3, gwPhase = 0;
       let cx = 0, cz = 0;                          // smoothed followed centre
       let sLevel = 0, sBass = 0, sTreble = 0, flare = 0, burstCD = 0;
 
@@ -453,8 +461,12 @@
           cx += (hx - cx) * (1 - Math.exp(-dt / 0.5));
           cz += (hz - cz) * (1 - Math.exp(-dt / 0.5));
           az += dt * (0.06 + sLevel * 0.05);
-          camDist += ((2.9 - sBass * 0.4) - camDist) * (1 - Math.exp(-dt / 0.8));
+          // the whole system breathes with loudness: loud → pull in (it fills the
+          // frame), quiet → pull back (calmer, wider)
+          camDist += ((3.25 - sLevel * 1.15) - camDist) * (1 - Math.exp(-dt / 0.7));
           camH = 2.3 + 0.22 * Math.sin(t * 0.13);
+          // gravitational-wave phase advances with the orbit (a touch faster when loud)
+          gwPhase += dt * (2.0 + sLevel * 1.5);
 
           // big burst → capture a new body that streaks in and is caught
           burstCD -= dt;
@@ -501,6 +513,8 @@
           pGrid.use();
           bindField(pGrid, audio);
           pGrid.i('uG', G).f('uKeyHue', keyHue).f('uRim', 0.95)
+               .f('uGwPhase', gwPhase).f('uGwK', 3.0)
+               .f('uGwAmp', 0.05 + s.sLevel * 0.18)
                .f('uBright', 0.5 * dim);
           pGrid.bind();
           gl.bindVertexArray(emptyVAO);
