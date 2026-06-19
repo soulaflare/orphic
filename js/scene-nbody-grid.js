@@ -4,18 +4,19 @@
  * genuine Newtonian gravity (leapfrog + softening). The motion is real — the
  * orbit is the rhythm, not a beat detector — and the masses read physically:
  * softening scales with ∛mass, so a heavy body carves a deep, wide well and a
- * light one only a shallow dimple. The camera holds the system's centre of mass
- * (which is pinned each frame, so nothing drifts off-screen) and slowly orbits
- * it, the warped fabric filling the frame and fading into darkness at the rim.
- * A measured swarm of light tracers falls through the real field, orbiting the
- * pair like stars.
+ * light one only a shallow dimple. The camera dynamically follows the binary's
+ * centre (smoothed for a cinematic lag) and slowly orbits it; the grid and the
+ * star swarm recenter on that point too, so the action always stays framed and
+ * the stars never get lost.
  *
- * The music is grounded in the physics — it never jolts the bodies. Bass deepens
- * the wells and heaves the whole sheet; strong beats send measured ripples
- * travelling out across the fabric; the live waveform shimmers along it; onsets
- * flare the cores; the key tilts a restrained steel-blue→gold palette. A big
- * burst captures a new body that streaks in and is caught. In silence the system
- * simply keeps orbiting — calm, dim, never static.
+ * The fabric itself is music-static — only gravity warps it (and the warp lives,
+ * because the bodies orbit). The music plays through the STARS: each tracer sings
+ * a frequency band set by its orbital radius — inner stars ride the bass, outer
+ * ones the treble — so the swarm becomes a living spectral halo that twinkles,
+ * swells and flares with the sound. The suns also throb (heavy with bass, light
+ * with treble, flaring on onsets) without moving off their real orbits. The key
+ * tilts a steel-blue/gold palette; a big burst captures a new body. In silence
+ * the stars fall quiet and the binary simply keeps orbiting — never static.
  *
  * Inspiration (concept only — Newtonian gravity is public domain, all GLSL our
  * own, no code borrowed): kavan010's "gravity_sim".
@@ -24,17 +25,29 @@
   'use strict';
   const M = window.ORPHIC;
   const MAXM = 6;             // a few bodies (2 heavy + companion + transients)
-  const DIM_T = 96;           // ~9k tracers — measured swarm of orbiting stars
-  const RIPPLES = 4;          // concurrent beat ripples on the fabric
+  const DIM_T = 112;          // ~12.5k tracers — a swarm of orbiting spectral stars
   const GSCALE = 1.0;         // gravitational constant (sets the orbital pace)
 
   // shared world / camera / gravity GLSL — one warped space for grid + tracers.
   const FIELD_LIB = M.GLSL_SPECTRUM + `
   uniform vec4 uMass[${MAXM}];   // xy = plane pos, z = mass, w = softening²
+  uniform float uBodyBand[${MAXM}]; // each body's frequency band, 0 = bass .. 1 = treble
   uniform int  uMassN;
   uniform float uDepth, uExtent, uMaxDip;
+  uniform vec2 uCenter;          // the followed binary centre (world plane coords)
   uniform vec3 uCamPos, uCamTarget;
   uniform float uFocal, uAspect;
+
+  // index of the body whose well a plane point belongs to (nearest centre)
+  int nearestBody(vec2 p) {
+    int bi = 0; float bd = 1e20;
+    for (int i = 0; i < ${MAXM}; i++) {
+      if (i >= uMassN) break;
+      vec2 d = p - uMass[i].xy; float dd = dot(d, d);
+      if (dd < bd) { bd = dd; bi = i; }
+    }
+    return bi;
+  }
 
   float potential(vec2 p) {
     float phi = 0.0;
@@ -57,13 +70,20 @@
     return vec4(xc * uFocal / uAspect, yc * uFocal, 0.0, zc);
   }`;
 
+  // a distinct, key-tinted colour per frequency band: bass→gold, mid→green/teal,
+  // treble→blue/violet. (needs pal from GLSL_COLOR — include after it.)
+  const BAND_COLOR = `
+  vec3 bandColor(float band, float keyHue) {
+    return pal(keyHue * 0.35 + 0.04 + band * 0.52, vec3(0.5), vec3(0.5),
+               vec3(1.0), vec3(0.0, 0.25, 0.5));
+  }`;
+
   // ---- the warped fabric (GL_LINES generated from gl_VertexID) ----
   const GRID_VERT = `#version 300 es
   precision highp float;
-  ` + M.GLSL_COLOR + M.GLSL_NOISE + FIELD_LIB + `
-  uniform int uG, uRippleN;
-  uniform vec4 uRipple[${RIPPLES}];           // x = radius, y = amplitude
-  uniform float uKeyHue, uBass, uLevel, uRim, uTime3;
+  ` + M.GLSL_COLOR + M.GLSL_NOISE + BAND_COLOR + FIELD_LIB + `
+  uniform int uG;
+  uniform float uKeyHue, uRim;
   out vec3 vCol;
   void main() {
     int v = gl_VertexID;
@@ -73,35 +93,24 @@
     if (seg < HV) { int row = seg / uG; gi = ivec2(seg - row * uG + end, row); }
     else { int s = seg - HV; int col = s / uG; gi = ivec2(col, s - col * uG + end); }
 
-    vec2 xz = (vec2(gi) / float(uG) * 2.0 - 1.0) * uExtent;
-    float r = length(xz);
+    // the tile is laid out around the followed centre so the fabric stays framed
+    vec2 tile = (vec2(gi) / float(uG) * 2.0 - 1.0) * uExtent;
+    vec2 xz = uCenter + tile;
+    float r = length(tile);
     float y = sheetY(xz);
-
-    // measured beat ripples travelling out across the fabric
-    float rip = 0.0;
-    for (int i = 0; i < ${RIPPLES}; i++) {
-      if (i >= uRippleN) break;
-      float dd = r - uRipple[i].x;
-      float g = exp(-dd * dd * 16.0) * uRipple[i].y;
-      y += g * 0.14; rip += g;
-    }
-    // continuous waveform shimmer rolling outward
-    float shim = wave(fract(r * 0.45 - uTime3 * 0.12));
-
     gl_Position = project(vec3(xz.x, y, xz.y));
 
     // radial fade hides the tile's square edges → fabric melts into the dark
     float fog = smoothstep(uExtent * uRim, uExtent * 0.32, r);
 
-    // restrained palette: cool steel web that warms to gold down in the wells
+    // a calm, music-static web: only gravity warps it. Cool steel that warms
+    // to gold down in the wells (the warp itself moves as the bodies orbit).
     float well = clamp(-potential(xz) * 0.05, 0.0, 1.5);
     vec3 cool = pal(uKeyHue + 0.58, vec3(0.20, 0.30, 0.42), vec3(0.16, 0.22, 0.30),
                     vec3(1.0), vec3(0.0, 0.15, 0.30));
     vec3 warm = vec3(1.0, 0.66, 0.32);
     vec3 c = mix(cool, warm, smoothstep(0.0, 1.0, well));
-    c += warm * rip * 1.4;                                          // ripples glow warm
-    c *= (0.22 + well * 1.4 + uLevel * 0.3 + rip * 1.2)
-       * (1.0 + uBass * 0.45 + shim * uLevel * 0.5);                // bass heave + shimmer
+    c *= (0.30 + well * 1.4);
     vCol = c * fog;
   }`;
 
@@ -115,7 +124,7 @@
   const BODY_VERT = `#version 300 es
   precision highp float;
   ` + M.GLSL_COLOR + FIELD_LIB + `
-  uniform float uPx, uKeyHue;
+  uniform float uPx, uKeyHue, uBassP, uTrebleP, uOnsetP;
   out vec3 vCol;
   void main() {
     int i = gl_VertexID;
@@ -124,20 +133,40 @@
     vec4 cl = project(wp);
     gl_Position = cl;
     float depth = clamp(7.0 / cl.w, 0.3, 2.4);
-    gl_PointSize = uPx * (0.5 + sqrt(mm.z) * 3.0) * depth;          // heavy = bigger
-    // heavy bodies warm gold-white, light ones cooler
-    vec3 hot = mix(vec3(0.7, 0.85, 1.05), vec3(1.0, 0.82, 0.55), clamp(mm.z, 0.0, 1.0));
-    vCol = hot * (0.8 + min(mm.z, 1.4) * 0.9);
+    float w = clamp(mm.z, 0.0, 1.0);
+    // suns react to the music without moving: heavy bodies throb with bass,
+    // light ones shimmer with treble, all flare on onsets
+    float react = 1.0 + uBassP * w * 0.7 + uTrebleP * (1.0 - w) * 0.8 + uOnsetP * 0.6;
+    gl_PointSize = uPx * (0.5 + sqrt(mm.z) * 3.0) * depth * (0.88 + react * 0.22);
+    vec3 hot = mix(vec3(0.7, 0.85, 1.05), vec3(1.0, 0.82, 0.55), w);
+    vCol = hot * (0.8 + min(mm.z, 1.4) * 0.9) * react;
   }`;
 
+  // round soft sprite for the tracer stars
   const SPRITE_FRAG = `#version 300 es
   precision highp float;
   in vec3 vCol; out vec4 fragColor;
   uniform float uBright, uFalloff;
   void main() {
     vec2 pc = gl_PointCoord - 0.5;
-    float a = exp(-dot(pc, pc) * uFalloff);
+    float d = length(pc) * 2.0;
+    if (d > 1.0) discard;                              // round, no square corners
+    float a = exp(-d * d * uFalloff);
     fragColor = vec4(vCol * a * uBright, 1.0);
+  }`;
+
+  // a proper round sun: a tight bright core + a soft corona (no square quad)
+  const SUN_FRAG = `#version 300 es
+  precision highp float;
+  in vec3 vCol; out vec4 fragColor;
+  uniform float uBright;
+  void main() {
+    vec2 pc = gl_PointCoord - 0.5;
+    float d = length(pc) * 2.0;                        // 0 centre .. 1 inscribed edge
+    if (d > 1.0) discard;
+    float core = pow(smoothstep(1.0, 0.0, d), 2.5);    // tight bright core
+    float corona = exp(-d * d * 2.5);                  // soft halo
+    fragColor = vec4(vCol * (core * 1.8 + corona * 0.5) * uBright, 1.0);
   }`;
 
   // ---- tracer particles (orbiting stars): pos.xy, vel.zw on the plane ----
@@ -148,7 +177,7 @@
     vec2 u = hash22(s);
     float ang = u.x * 6.28318;
     float rad = (0.4 + u.y * 0.6) * uSpawnR;
-    vec2 p = vec2(cos(ang), sin(ang)) * rad;
+    vec2 p = uCenter + vec2(cos(ang), sin(ang)) * rad;
     float vmag = sqrt(uGScale * uTotM / max(rad, 0.2)) * (0.9 + hash12(s + 4.0) * 0.2);
     fragColor = vec4(p, vec2(-sin(ang), cos(ang)) * vmag);
   }`;
@@ -169,12 +198,13 @@
     vel += acc * uGScale * uDt;
     vel *= 0.9994;
     p += vel * uDt;
-    float rr = length(p);
-    if (rr > uSpawnR * 1.4 || rr < 0.04) {
+    // keep the swarm bound to the followed centre so the stars never get lost
+    float rr = length(p - uCenter);
+    if (rr > uSpawnR * 1.5 || rr < 0.04) {
       vec2 s = gl_FragCoord.xy + uSeed;
       vec2 u = hash22(s);
       float ang = u.x * 6.28318, rad = (0.4 + u.y * 0.6) * uSpawnR;
-      p = vec2(cos(ang), sin(ang)) * rad;
+      p = uCenter + vec2(cos(ang), sin(ang)) * rad;
       float vmag = sqrt(uGScale * uTotM / max(rad, 0.2)) * (0.9 + hash12(s + 4.0) * 0.2);
       vel = vec2(-sin(ang), cos(ang)) * vmag;
     }
@@ -185,8 +215,8 @@
   precision highp float;
   uniform sampler2D uParts;
   uniform int uDim;
-  ` + M.GLSL_COLOR + FIELD_LIB + `
-  uniform float uKeyHue, uPx, uShimmer;
+  ` + M.GLSL_COLOR + M.GLSL_NOISE + FIELD_LIB + `
+  uniform float uKeyHue, uPx, uShimmer, uBeat, uTime4;
   out vec3 vCol;
   void main() {
     ivec2 tc = ivec2(gl_VertexID % uDim, gl_VertexID / uDim);
@@ -196,12 +226,26 @@
     vec4 cl = project(wp);
     gl_Position = cl;
     float depth = clamp(6.0 / cl.w, 0.4, 2.2);
-    gl_PointSize = uPx * depth;
     float spd = length(st.zw);
-    // fast (deep in a well) tracers glow hot gold; slow ones stay cool
-    vec3 cool = pal(uKeyHue + 0.55, vec3(0.4), vec3(0.4), vec3(1.0), vec3(0.0, 0.18, 0.36));
-    vec3 c = mix(cool, vec3(1.0, 0.78, 0.5), clamp(spd * 0.5 - 0.2, 0.0, 1.0));
-    vCol = c * (0.35 + spd * 0.7) * (0.75 + uShimmer * 0.5);
+    float rad = length(xz - uCenter);
+    float h = hash12(vec2(tc) + 0.5);
+
+    // each star sings a frequency band set by its orbital radius: inner stars
+    // (near the suns) ride the bass, outer ones the treble — so the orbiting
+    // swarm becomes a living spectral halo
+    float band = clamp((rad - 0.6) / 1.8, 0.0, 1.0);
+    float e = specLog(band);
+    float loud = e * e;
+    // twinkle — faster and brighter with treble
+    float tw = 0.6 + 0.4 * sin(uTime4 * (1.5 + h * 4.0) + h * 40.0) * (0.6 + uShimmer);
+    float react = 0.35 + loud * 3.2 + uBeat * 0.4;          // flares when its band is loud
+
+    vec3 cool = pal(uKeyHue + 0.55 - band * 0.28, vec3(0.45), vec3(0.45),
+                    vec3(1.0), vec3(0.0, 0.2, 0.4));
+    vec3 hot = vec3(1.0, 0.85, 0.6);
+    vec3 c = mix(cool, hot, clamp(loud * 1.8 + spd * 0.25, 0.0, 1.0));
+    vCol = c * (0.4 + spd * 0.5) * react * tw;
+    gl_PointSize = uPx * depth * (0.5 + h * 0.7 + loud * 1.8);  // swells when band is loud
   }`;
 
   const FADE_FRAG = M.FRAG_HEADER + `
@@ -235,7 +279,7 @@
       const GRID_VERTS = 2 * 2 * G * (G + 1);
       const tr = glc.pingpong(DIM_T, DIM_T, { nearest: true });
       const pGrid = glc.program(GRID_FRAG, GRID_VERT);
-      const pBody = glc.program(SPRITE_FRAG, BODY_VERT);
+      const pBody = glc.program(SUN_FRAG, BODY_VERT);
       const pTInit = glc.program(TINIT_FRAG);
       const pTUpd = glc.program(TUPDATE_FRAG);
       const pTracer = glc.program(SPRITE_FRAG, TRACER_VERT);
@@ -245,13 +289,12 @@
       const emptyVAO = gl.createVertexArray();
       const trVAO = gl.createVertexArray();
 
-      const EXTENT = 7.0, DEPTH = 0.42, MAXDIP = 3.0, SPAWNR = 2.3;
+      const EXTENT = 7.0, DEPTH = 0.42, MAXDIP = 3.0, SPAWNR = 2.0;
       const massBuf = new Float32Array(MAXM * 4);
-      const ripBuf = new Float32Array(RIPPLES * 4);
       let glow = null, seeded = false, keyHue = 0;
-      let az = 0.4, camDist = 4.0, camH = 3.0, depthNow = DEPTH;
-      let sLevel = 0, sBass = 0, flare = 0, burstCD = 0, ripCD = 0;
-      const ripples = [];
+      let az = 0.4, camDist = 2.9, camH = 2.3;
+      let cx = 0, cz = 0;                          // smoothed followed centre
+      let sLevel = 0, sBass = 0, sTreble = 0, flare = 0, burstCD = 0;
 
       // softening scales with ∛mass (denser, more massive → bigger radius), so
       // the well a body carves reads its mass: heavy = deep & wide, light = shallow
@@ -328,9 +371,10 @@
       function bindField(prog, audio) {
         const n = packMasses();
         prog.f4v('uMass', massBuf).i('uMassN', n)
-            .f('uDepth', depthNow).f('uExtent', EXTENT).f('uMaxDip', MAXDIP)
-            .v3('uCamPos', Math.sin(az) * camDist, camH, Math.cos(az) * camDist)
-            .v3('uCamTarget', 0, -0.5, 0)
+            .f('uDepth', DEPTH).f('uExtent', EXTENT).f('uMaxDip', MAXDIP)
+            .v2('uCenter', cx, cz)
+            .v3('uCamPos', cx + Math.sin(az) * camDist, camH, cz + Math.cos(az) * camDist)
+            .v3('uCamTarget', cx, -0.5, cz)
             .f('uFocal', 1.9).f('uAspect', glc.width / glc.height);
         M.spectrumUniforms(prog, audio, 1);
         return n;
@@ -363,30 +407,22 @@
           // snappier-but-smooth envelopes → reactive without bouncing the bodies
           sLevel += (f.level - sLevel) * (1 - Math.exp(-dt / 0.22));
           sBass += (f.bass - sBass) * (1 - Math.exp(-dt / 0.20));
+          sTreble += (f.treble - sTreble) * (1 - Math.exp(-dt / 0.14));
           flare *= Math.exp(-dt / 0.5);
           if (f.burst === 1) flare = 1;
-          // bass deepens every well and heaves the whole sheet
-          depthNow = DEPTH * (1.0 + sBass * 0.5);
-
-          // cinematic camera: orbits the (pinned) centre of mass, gentle bob,
-          // a subtle push-in on bass
-          az += dt * (0.06 + sLevel * 0.05);
-          camDist += ((4.0 - sBass * 0.5) - camDist) * (1 - Math.exp(-dt / 0.8));
-          camH = 3.0 + 0.3 * Math.sin(t * 0.13);
 
           integrate(dt);                                   // the orbit is the rhythm
 
-          // strong beats fire a measured ripple across the fabric
-          ripCD -= dt;
-          if (!restful && (f.beat > 0.7 || f.onset > 0.7) && ripCD <= 0) {
-            ripples.push({ r: 0.1, amp: 0.22 + f.beat * 0.18 });
-            ripCD = 0.16;
-          }
-          for (let i = ripples.length - 1; i >= 0; i--) {
-            const rp = ripples[i];
-            rp.r += dt * 1.7; rp.amp *= Math.exp(-dt / 0.6);
-            if (rp.amp < 0.02 || rp.r > EXTENT * 0.7) ripples.splice(i, 1);
-          }
+          // the camera dynamically follows the binary's centre (the heavy bodies'
+          // centroid), smoothed for a cinematic lag, and slowly orbits it
+          let hx = 0, hz = 0, hm = 0;
+          for (const b of bodies) if (b.m > 0.5) { hx += b.m * b.x; hz += b.m * b.z; hm += b.m; }
+          if (hm > 0) { hx /= hm; hz /= hm; }
+          cx += (hx - cx) * (1 - Math.exp(-dt / 0.5));
+          cz += (hz - cz) * (1 - Math.exp(-dt / 0.5));
+          az += dt * (0.06 + sLevel * 0.05);
+          camDist += ((2.9 - sBass * 0.4) - camDist) * (1 - Math.exp(-dt / 0.8));
+          camH = 2.3 + 0.22 * Math.sin(t * 0.13);
 
           // big burst → capture a new body that streaks in and is caught
           burstCD -= dt;
@@ -413,20 +449,13 @@
             glc.draw(pTUpd, tr.write);
             tr.swap();
           }
-          this._s = { sLevel, sBass, flare, restful };
+          this._s = { sLevel, sBass, sTreble, flare, restful };
         },
         render(out, audio, t) {
           if (!glow) this.resize(glc.width, glc.height);
           const f = audio.f;
-          const s = this._s || { sLevel: 0, sBass: 0, flare: 0, restful: false };
+          const s = this._s || { sLevel: 0, sBass: 0, sTreble: 0, flare: 0, restful: false };
           const dim = s.restful ? 0.55 : 1.0;
-
-          // pack ripple uniforms
-          let nr = 0;
-          for (const rp of ripples) {
-            if (nr >= RIPPLES) break;
-            ripBuf[nr * 4] = rp.r; ripBuf[nr * 4 + 1] = rp.amp; nr++;
-          }
 
           pFade.use().f('uDecay', 0.82).tex('uPrev', glow.read.tex, 0);
           glc.draw(pFade, glow.write);
@@ -436,13 +465,11 @@
           gl.enable(gl.BLEND);
           gl.blendFunc(gl.ONE, gl.ONE);
 
-          // 1. warped fabric
+          // 1. warped fabric — calm, music-static, translucent
           pGrid.use();
           bindField(pGrid, audio);
-          pGrid.i('uG', G).f('uKeyHue', keyHue)
-               .f('uBass', s.sBass).f('uLevel', s.sLevel).f('uRim', 0.95)
-               .f4v('uRipple', ripBuf).i('uRippleN', nr).f('uTime3', t)
-               .f('uBright', (0.78 + s.sLevel * 0.3) * dim + s.flare * 0.4);
+          pGrid.i('uG', G).f('uKeyHue', keyHue).f('uRim', 0.95)
+               .f('uBright', 0.5 * dim);
           pGrid.bind();
           gl.bindVertexArray(emptyVAO);
           gl.drawArrays(gl.LINES, 0, GRID_VERTS);
@@ -450,10 +477,10 @@
           // 2. orbiting-star tracers
           pTracer.use();
           bindField(pTracer, audio);
-          pTracer.i('uDim', DIM_T).f('uKeyHue', keyHue).f('uPx', 2.3)
-                 .f('uShimmer', f.treble * 0.8 + s.flare)
-                 .f('uBright', (0.40 + s.sLevel * 0.22 + f.beat * 0.10) * dim)
-                 .f('uFalloff', 7.0);
+          pTracer.i('uDim', DIM_T).f('uKeyHue', keyHue).f('uPx', 3.2)
+                 .f('uShimmer', s.sTreble * 1.1 + s.flare).f('uBeat', f.beat).f('uTime4', t)
+                 .f('uBright', (0.6 + s.sLevel * 0.25) * dim)
+                 .f('uFalloff', 3.0);
           pTracer.tex('uParts', tr.read.tex, 0).bind();
           gl.bindVertexArray(trVAO);
           gl.drawArrays(gl.POINTS, 0, DIM_T * DIM_T);
@@ -462,9 +489,9 @@
           const nMass = packMasses();
           pBody.use();
           bindField(pBody, audio);
-          pBody.f('uKeyHue', keyHue).f('uPx', 10.0)
-               .f('uBright', (0.7 + f.level * 0.5 + f.onset * 0.6) * dim + s.flare * 0.6)
-               .f('uFalloff', 6.0);
+          pBody.f('uKeyHue', keyHue).f('uPx', 13.0)
+               .f('uBassP', s.sBass).f('uTrebleP', s.sTreble).f('uOnsetP', f.onset)
+               .f('uBright', (0.65 + f.level * 0.4) * dim + s.flare * 0.6);
           pBody.bind();
           gl.bindVertexArray(emptyVAO);
           gl.drawArrays(gl.POINTS, 0, nMass);
