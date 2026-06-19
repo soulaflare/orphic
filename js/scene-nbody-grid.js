@@ -235,10 +235,11 @@
     // core is reborn in the suns' neighbourhood on a stable circumbinary orbit —
     // so it sweeps around BOTH bodies, density stays high, and the spread of
     // radii shears into spiral arms
-    // recycle when flung past the cull radius OR drawn too near the centre, so
-    // stars never pile up in the middle under the suns
-    float rr = length(p - uCenter);
-    if (rr > uCullR || rr < 0.45) {
+    // recycle when flung past the edge, or when a star is lingering SLOWLY near
+    // the centre (which would pile up) — but let fast stars swing right through
+    // the middle so it fills organically instead of leaving a hard circular hole
+    float rr = length(p - uCenter), spd2 = length(vel);
+    if (rr > uCullR || rr < 0.12 || (rr < 0.5 && spd2 < 0.45)) {
       vec2 s = gl_FragCoord.xy + uSeed;
       vec2 u = hash22(s);
       float ang = u.x * 6.28318, rad = 1.0 + u.y * 1.5;
@@ -283,11 +284,11 @@
     // fade out toward the cull radius so stars dim away gracefully (no popping)
     float fade = smoothstep(uCullR, uCullR * 0.65, rad);
 
-    // appearance varies with orbital speed: inner/fast stars run hot and bright,
-    // outer/slow stars are dim and keep their saturated band colour
+    // appearance varies with orbital speed, but kept dim/saturated so the disc
+    // reads as sparse warm streaks (not a blown-out white blob)
     vec3 col = mix(bandColor(band), vec3(1.0, 0.96, 0.88),
-                   clamp(loud * 0.45 + spd * 0.22, 0.0, 0.6));
-    vCol = col * (0.28 + spd * 0.8) * react * tw * fade;
+                   clamp(loud * 0.4 + spd * 0.1, 0.0, 0.42));
+    vCol = col * (0.32 + spd * 0.42) * react * tw * fade;
     gl_PointSize = uPx * depth * (0.5 + h * 0.7 + loud * 1.7);  // swells when band is loud
   }`;
 
@@ -561,7 +562,7 @@
           bindField(pTracer, audio);
           pTracer.i('uDim', DIM_T).f('uKeyHue', keyHue).f('uPx', 3.2)
                  .f('uShimmer', s.sTreble * 1.1 + s.flare).f('uBeat', f.beat).f('uTime4', t)
-                 .f('uCullR', CULLR).f('uBright', (0.6 + s.sLevel * 0.25) * dim)
+                 .f('uCullR', CULLR).f('uBright', (0.42 + s.sLevel * 0.2) * dim)
                  .f('uFalloff', 3.0);
           pTracer.tex('uParts', tr.read.tex, 0).bind();
           gl.bindVertexArray(trVAO);
