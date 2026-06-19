@@ -202,24 +202,24 @@
   void main() {
     vec4 st = texelFetch(uParts, ivec2(gl_FragCoord.xy), 0);
     vec2 p = st.xy, vel = st.zw;
-    // two populations (fixed per particle) → structure with chaos riding on it:
-    //   ORBITERS feel only the smooth central mass → stable circumbinary disk
-    //   FIGHTERS feel the real two-sun field → dive, weave and get slingshot
+    // every star blends a smooth central backbone (keeps it bound, so the disc
+    // persists) with the REAL two-sun field (organic weaving + spiral density
+    // waves). The blend varies per particle, so instead of one perfect circular
+    // disc on rails we get a natural continuum: some stars ride a stable
+    // backbone, others weave and get slung around the two suns.
     float kind = hash12(gl_FragCoord.xy + 7.0);
-    vec2 acc;
-    if (kind < 0.45) {
-      vec2 dc = uCenter - p;
-      float rc2 = dot(dc, dc) + 0.25;
-      acc = uTotM * dc / (rc2 * sqrt(rc2));
-    } else {
-      acc = vec2(0.0);
-      for (int i = 0; i < ${MAXM}; i++) {
-        if (i >= uMassN) break;
-        vec2 d = uMass[i].xy - p;
-        float r2 = dot(d, d) + uMass[i].w * 1.5 + 0.025;   // sharper → real chaos
-        acc += uMass[i].z * d / (r2 * sqrt(r2));
-      }
+    vec2 dc = uCenter - p;
+    float rc2 = dot(dc, dc) + 0.25;
+    vec2 central = uTotM * dc / (rc2 * sqrt(rc2));
+    vec2 twosun = vec2(0.0);
+    for (int i = 0; i < ${MAXM}; i++) {
+      if (i >= uMassN) break;
+      vec2 d = uMass[i].xy - p;
+      float r2 = dot(d, d) + uMass[i].w * 1.5 + 0.03;
+      twosun += uMass[i].z * d / (r2 * sqrt(r2));
     }
+    float w = 0.4 + kind * 0.45;                  // 0.4..0.85 toward the backbone
+    vec2 acc = mix(twosun, central, w);
     // music bends spacetime harder: gravity surges with loudness, with the
     // local band's energy (so each region pulses to its own frequency), and a
     // brief kick on onsets. It's a reversible force scaling, not energy
@@ -239,10 +239,14 @@
     if (rr > uCullR || rr < 0.45) {
       vec2 s = gl_FragCoord.xy + uSeed;
       vec2 u = hash22(s);
-      float ang = u.x * 6.28318, rad = 1.0 + u.y * 1.5;        // a clear ring near the bodies
+      float ang = u.x * 6.28318, rad = 1.0 + u.y * 1.5;
       p = uCenter + vec2(cos(ang), sin(ang)) * rad;
-      float vmag = sqrt(uGScale * uTotM / rad) * (0.92 + hash12(s + 4.0) * 0.16);
-      vel = vec2(-sin(ang), cos(ang)) * vmag;
+      // varied speed → a spread of eccentricities (not one circular ring), and a
+      // little radial component → orbits that precess and cross for an organic disc
+      float vmag = sqrt(uGScale * uTotM / rad) * (0.72 + hash12(s + 4.0) * 0.5);
+      float radial = (hash12(s + 8.0) - 0.5) * 0.4;
+      vec2 tang = vec2(-sin(ang), cos(ang));
+      vel = tang * vmag + vec2(cos(ang), sin(ang)) * radial;
     }
     fragColor = vec4(p, vel);
   }`;
