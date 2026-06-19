@@ -38,15 +38,18 @@
   uniform vec3 uCamPos, uCamTarget;
   uniform float uFocal, uAspect;
 
-  // index of the body whose well a plane point belongs to (nearest centre)
-  int nearestBody(vec2 p) {
-    int bi = 0; float bd = 1e20;
+  // the frequency band a plane point "belongs to", blended smoothly by each
+  // body's gravitational influence — so colour graduates between suns instead of
+  // snapping at a hard nearest-neighbour seam
+  float fieldBand(vec2 p) {
+    float ws = 0.0, bs = 0.0;
     for (int i = 0; i < ${MAXM}; i++) {
       if (i >= uMassN) break;
-      vec2 d = p - uMass[i].xy; float dd = dot(d, d);
-      if (dd < bd) { bd = dd; bi = i; }
+      vec2 d = p - uMass[i].xy;
+      float w = uMass[i].z / (dot(d, d) + 0.25);
+      bs += uBodyBand[i] * w; ws += w;
     }
-    return bi;
+    return bs / max(ws, 1e-5);
   }
 
   float potential(vec2 p) {
@@ -109,7 +112,7 @@
     float well = clamp(-potential(xz) * 0.05, 0.0, 1.5);
     vec3 cool = pal(uKeyHue + 0.58, vec3(0.20, 0.30, 0.42), vec3(0.16, 0.22, 0.30),
                     vec3(1.0), vec3(0.0, 0.15, 0.30));
-    vec3 warm = bandColor(uBodyBand[nearestBody(xz)], uKeyHue);
+    vec3 warm = bandColor(fieldBand(xz), uKeyHue);
     vec3 c = mix(cool, warm, smoothstep(0.0, 1.0, well));
     c *= (0.30 + well * 1.4);
     vCol = c * fog;
@@ -204,7 +207,9 @@
     float dC = length(fromC);
     if (dC > uSpawnR) acc -= fromC / dC * (dC - uSpawnR) * uConfK;
     vel += acc * uGScale * uDt;
-    vel *= 0.9997;                                  // barely any drag → spirals persist
+    // distance-scaled drag: inner spirals glide freely; the outskirts bleed
+    // energy and fall back, so the swarm stays dense instead of dispersing
+    vel *= mix(0.9997, 0.988, smoothstep(uSpawnR * 0.55, uSpawnR * 1.1, dC));
     p += vel * uDt;
     // last-resort respawn (rare): flung way out, or fallen into a core
     float rr = length(p - uCenter);
@@ -237,9 +242,9 @@
     float spd = length(st.zw);
     float h = hash12(vec2(tc) + 0.5);
 
-    // each star takes on the aspect of the sun whose well it orbits: it adopts
-    // that sun's frequency band and colour, and pulses when that band is loud
-    float band = uBodyBand[nearestBody(xz)];
+    // each star takes on the aspect of the suns whose wells it orbits: it adopts
+    // a smoothly-blended band + colour, and pulses when that band is loud
+    float band = fieldBand(xz);
     float e = specLog(band);
     float loud = e * e;
     // twinkle — faster and brighter with treble
@@ -450,7 +455,7 @@
           pTUpd.use();
           bindField(pTUpd, audio);
           pTUpd.f('uDt', dt).f('uGScale', GSCALE).f('uTotM', totalMass())
-               .f('uSpawnR', SPAWNR).f('uConfK', 2.0);
+               .f('uSpawnR', SPAWNR).f('uConfK', 3.5);
           for (let it = 0; it < 2; it++) {
             pTUpd.f('uSeed', (t * 60.0 + it * 17.0) % 1000.0 + 0.5)
                  .tex('uParts', tr.read.tex, 0);
