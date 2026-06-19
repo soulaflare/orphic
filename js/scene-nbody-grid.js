@@ -291,18 +291,27 @@
   uniform sampler2D uPrev; uniform float uDecay;
   void main() { fragColor = vec4(texture(uPrev, vUV).rgb * uDecay, 1.0); }`;
 
-  // composite over a computed cinematic sky (gradient + faint stars) + bloom
+  // composite over a computed deep-space backdrop (nebula + layered stars) + bloom
   const SHOW_FRAG = M.FRAG_HEADER + M.GLSL_LIB + `
   uniform sampler2D uTex, uBloom;
+  uniform float uTime5;
   void main() {
     vec3 glow = texture(uTex, vUV).rgb + texture(uBloom, vUV).rgb * 0.6;
-    vec3 sky = mix(vec3(0.018, 0.022, 0.032), vec3(0.002, 0.003, 0.008),
+    vec3 sky = mix(vec3(0.020, 0.024, 0.036), vec3(0.002, 0.003, 0.010),
                    smoothstep(0.0, 1.0, vUV.y));
-    vec2 g = vUV * vec2(220.0, 130.0);
-    vec2 id = floor(g);
-    float star = pow(hash12(id), 240.0);
-    float sd = length(fract(g) - 0.5);
-    sky += vec3(0.6, 0.7, 0.9) * star * exp(-sd * sd * 26.0) * 0.6 * step(0.45, vUV.y);
+    // faint nebula clouds — very subtle, so the black reads as deep space not void
+    float neb = fbm(vUV * vec2(3.2, 2.2) + 5.0);
+    sky += mix(vec3(0.04, 0.02, 0.06), vec3(0.015, 0.035, 0.06), vUV.y)
+         * smoothstep(0.45, 1.0, neb) * (1.0 - vUV.y * 0.25);
+    // two star layers: dense faint dust + sparse brighter stars, gently twinkling
+    vec2 g1 = vUV * vec2(260.0, 150.0); vec2 id1 = floor(g1);
+    float s1 = pow(hash12(id1), 300.0);
+    float tw1 = 0.7 + 0.3 * sin(uTime5 * 2.0 + hash12(id1 + 2.0) * 40.0);
+    sky += vec3(0.7, 0.78, 0.95) * s1 * exp(-dot(fract(g1) - 0.5, fract(g1) - 0.5) * 32.0) * tw1;
+    vec2 g2 = vUV * vec2(110.0, 64.0); vec2 id2 = floor(g2);
+    float s2 = pow(hash12(id2 + 9.0), 150.0);
+    float tw2 = 0.6 + 0.4 * sin(uTime5 * 1.3 + hash12(id2) * 30.0);
+    sky += vec3(0.95, 0.88, 0.8) * s2 * exp(-dot(fract(g2) - 0.5, fract(g2) - 0.5) * 16.0) * 0.9 * tw2;
     vec3 c = sky + glow;
     float v = length(vUV - 0.5);
     c *= 1.0 - v * v * 0.85;                 // vignette
@@ -335,7 +344,7 @@
       let glow = null, seeded = false, keyHue = 0;
       let az = 0.4, camDist = 3.2, camH = 2.3, gwPhase = 0;
       let cx = 0, cz = 0;                          // smoothed followed centre
-      let sLevel = 0, sBass = 0, sTreble = 0, flare = 0, burstCD = 0;
+      let sLevel = 0, sBass = 0, sTreble = 0, flare = 0, burstCD = 0, wanderCD = 2.0;
 
       // softening scales with ∛mass (denser, more massive → bigger radius), so
       // the well a body carves reads its mass: heavy = deep & wide, light = shallow
@@ -359,8 +368,12 @@
       // pin the centre of mass to the origin (position AND velocity) so the
       // system never drifts off-screen, even after a capture adds momentum
       function recenter() {
+        // pin only the permanent core (binary + companion) so transient
+        // wanderers can fly freely without yanking the whole system
+        const n = Math.min(3, bodies.length);
         let mx = 0, mz = 0, px = 0, pz = 0, mt = 0;
-        for (const b of bodies) {
+        for (let i = 0; i < n; i++) {
+          const b = bodies[i];
           mx += b.m * b.x; mz += b.m * b.z;
           px += b.m * b.vx; pz += b.m * b.vz; mt += b.m;
         }
@@ -394,12 +407,28 @@
           accelAll();
           for (const b of bodies) { b.vx += b.ax * h * 0.5; b.vz += b.az * h * 0.5; }
         }
-        for (let i = bodies.length - 1; i >= 3; i--) {     // cull escaped captures
-          if (Math.hypot(bodies[i].x, bodies[i].z) > EXTENT) bodies.splice(i, 1);
+        for (let i = bodies.length - 1; i >= 3; i--) {     // cull wanderers that have left
+          if (Math.hypot(bodies[i].x - cx, bodies[i].z - cz) > EXTENT * 1.7) bodies.splice(i, 1);
         }
         recenter();
       }
       function totalMass() { let m = 0; for (const b of bodies) m += b.m; return m; }
+
+      // a passing body enters from the dark outskirts aimed across the system.
+      // speedFac vs circular speed decides its fate: >~1.4 → hyperbolic flyby
+      // (sails on through), <~1.4 → bound → captured into an eccentric orbit.
+      function spawnWanderer(speedFac) {
+        if (bodies.length >= MAXM) return;
+        const ang = Math.random() * Math.PI * 2, r = EXTENT * 1.3;
+        const aim = ang + Math.PI + (Math.random() - 0.5) * 0.9;   // toward centre, offset
+        const v = Math.sqrt(GSCALE * totalMass() / r) * speedFac;
+        const m = 0.16 + Math.random() * 0.2;
+        bodies.push({
+          x: cx + Math.cos(ang) * r, z: cz + Math.sin(ang) * r,
+          vx: Math.cos(aim) * v, vz: Math.sin(aim) * v,
+          m, soft: softFor(m), band: BANDS[(Math.random() * 3) | 0],
+        });
+      }
 
       function packMasses() {
         const n = Math.min(MAXM, bodies.length);
@@ -472,18 +501,17 @@
           // gravitational-wave phase advances with the orbit (a touch faster when loud)
           gwPhase += dt * (2.0 + sLevel * 1.5);
 
-          // big burst → capture a new body that streaks in and is caught
-          burstCD -= dt;
-          if (f.burst === 1 && burstCD <= 0 && bodies.length < MAXM) {
-            const ang = Math.random() * Math.PI * 2, r = EXTENT * 0.7;
-            const vt = Math.sqrt(GSCALE * totalMass() / r) * 0.85, m = 0.32;
-            bodies.push({
-              x: Math.cos(ang) * r, z: Math.sin(ang) * r,
-              vx: -Math.sin(ang) * vt - Math.cos(ang) * 0.25,
-              vz: Math.cos(ang) * vt - Math.sin(ang) * 0.25,
-              m, soft: softFor(m), band: BANDS[bodies.length % BANDS.length],
-            });
-            burstCD = 4.0;
+          // passing bodies fill the dark outskirts: most drift through on
+          // hyperbolic flybys (denting the fabric and tugging a tidal stream as
+          // they pass), the occasional slow one — fired on a big burst — is
+          // captured into orbit and joins the dance
+          burstCD -= dt; wanderCD -= dt;
+          if (f.burst === 1 && burstCD <= 0) {
+            spawnWanderer(0.95 + Math.random() * 0.3);   // slow → captured
+            burstCD = 3.0;
+          } else if (wanderCD <= 0 && (f.beat > 0.6 || f.onset > 0.5)) {
+            spawnWanderer(1.5 + Math.random() * 0.7);     // fast → flyby
+            wanderCD = 2.5 + Math.random() * 3.0;
           }
 
           // ---- step the tracers through the real field ----
@@ -549,7 +577,7 @@
           glow.swap();
 
           bloom.render(glow.read.tex, glc.width, glc.height, 0.35);
-          pShow.use().tex('uTex', glow.read.tex, 0).tex('uBloom', bloom.tex, 1);
+          pShow.use().tex('uTex', glow.read.tex, 0).tex('uBloom', bloom.tex, 1).f('uTime5', t);
           glc.draw(pShow, out);
         },
         dispose() {
