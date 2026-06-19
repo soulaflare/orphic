@@ -26,8 +26,8 @@
   uniform float uFov, uLens, uDiskBright, uSpin, uKeyHue, uRing, uPhoton;
 
   // geometry, in units of the Schwarzschild radius (horizon = 1)
-  const float RIN  = 3.5;   // inner disk edge (~ISCO)
-  const float ROUT = 12.0;  // outer disk edge
+  const float RIN  = 3.2;   // inner disk edge (~ISCO)
+  const float ROUT = 13.0;  // outer disk edge
   const float RPH  = 1.5;   // photon sphere
   const float RESC = 46.0;  // ray considered escaped beyond here
 
@@ -67,16 +67,23 @@
                * smoothstep(0.0, 0.12, tnorm)        // soft inner lip
                * smoothstep(1.0, 0.7, tnorm);        // fade to outer rim
 
-    // temperature: hot blue-white inside, key-tinted ember outside
-    float temp = pow(1.0 - tnorm, 1.6);
-    vec3 cool = pal(uKeyHue + 0.04, vec3(0.5), vec3(0.45), vec3(1.0), vec3(0.0, 0.15, 0.30));
-    vec3 dcol = mix(cool, vec3(0.8, 0.88, 1.0), temp);
+    // blackbody temperature gradient — ember rim → gold → blue-white core.
+    // the ember end is key-tinted (warm-biased so chords color the disk
+    // without it ever going an unphysical green), so harmony reads here.
+    float temp = pow(clamp(1.0 - tnorm, 0.0, 1.0), 1.4);
+    vec3 ember = pal(uKeyHue, vec3(0.55, 0.32, 0.26), vec3(0.45, 0.30, 0.22),
+                     vec3(1.0), vec3(0.0, 0.20, 0.45));
+    vec3 dcol = mix(ember, vec3(1.0, 0.76, 0.42), smoothstep(0.0, 0.5, temp));
+    dcol = mix(dcol, vec3(0.82, 0.90, 1.08), smoothstep(0.5, 1.0, temp));
 
-    // relativistic Doppler beaming: prograde velocity vs view direction
+    // relativistic Doppler beaming: prograde velocity vs view direction.
+    // approaching side brightens + blue-shifts; receding side dims + reddens.
     vec3 vel = normalize(cross(vec3(0.0, 1.0, 0.0), hit));
     float beam = dot(vel, normalize(-rd)) / sqrt(max(r, RIN)); // faster inside
-    dcol *= 1.0 + beam * (1.4 + uLevel * 1.2);
-    dcol += vec3(0.5, 0.7, 1.0) * max(beam, 0.0) * 0.7;        // approaching → bluer
+    dcol *= 1.0 + beam * (1.0 + uLevel * 0.8);
+    dcol += vec3(0.25, 0.45, 1.0) * max(beam, 0.0) * 0.45;     // approaching → bluer
+    dcol *= 1.0 + max(-beam, 0.0) * 0.3;                       // (receding kept dim)
+    dcol = mix(dcol, dcol * vec3(1.15, 0.6, 0.35), max(-beam, 0.0) * 0.5); // → redder
 
     // beat shockwave shell expanding outward through the disk
     if (uRing > 0.0) dcol += vec3(1.0, 0.95, 0.9) * exp(-pow((r - uRing) * 2.4, 2.0)) * 2.2;
@@ -125,7 +132,7 @@
     vec3 col = acc;
     if (escaped) col += skybox(normalize(dir));
     // photon ring: light that grazed the photon sphere stacks into a thin halo
-    float ph = smoothstep(0.30, 0.0, abs(rmin - RPH));
+    float ph = smoothstep(0.22, 0.0, abs(rmin - RPH));
     col += vec3(1.0, 0.96, 0.88) * ph * uPhoton;
 
     col *= 0.7 + uLevel * 0.6;
@@ -185,10 +192,12 @@
         render(out, audio, t) {
           if (!buf) this.resize(glc.width, glc.height);
           const f = audio.f;
-          // slow orbit; bass pulls the camera in, a gentle bob keeps it 3D
+          // slow orbit; bass pulls the camera in, a gentle bob keeps it 3D.
+          // low inclination → near-edge-on, the disk arcs dramatically over
+          // and under the hole; the bob never lets it go fully flat.
           const ang = f.phaseLevel * 0.12;
-          const R = 17.5 - f.bass * 2.2;
-          const cy = 2.6 + 1.4 * Math.sin(f.phaseLevel * 0.06);
+          const R = 15.5 - f.bass * 2.0;
+          const cy = 1.7 + 1.1 * Math.sin(f.phaseLevel * 0.06);
 
           pMarch.use();
           M.audioUniforms(pMarch, audio, t);
@@ -199,8 +208,10 @@
                 .f('uFov', 1.15 + f.bassFast * 0.08)
                 // bass deepens spacetime curvature; rests relax it
                 .f('uLens', (1.0 + f.bass * 0.7 + f.phaseBass * 0.0) * (1.0 - f.quiet * 0.25))
-                // disk brightness: loud → blazing, rests → dim ember, return → supernova
-                .f('uDiskBright', (0.85 + f.level * 1.1) * (1.0 - f.quiet * 0.78) + f.burst * 1.6)
+                // disk brightness: loud → blazing, rests → dim ember, return → supernova.
+                // kept moderate so the temperature color survives the tonemap
+                // instead of clipping to flat white at peaks.
+                .f('uDiskBright', (0.62 + f.level * 0.8) * (1.0 - f.quiet * 0.78) + f.burst * 1.2)
                 .f('uSpin', spin)
                 .f('uKeyHue', keyHue)
                 .f('uRing', ring)
