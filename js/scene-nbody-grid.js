@@ -218,7 +218,7 @@
       float r2 = dot(d, d) + uMass[i].w * 1.5 + 0.03;
       twosun += uMass[i].z * d / (r2 * sqrt(r2));
     }
-    float w = 0.4 + kind * 0.45;                  // 0.4..0.85 toward the backbone
+    float w = 0.25 + kind * 0.45;                 // 0.25..0.70 — more real two-sun field
     vec2 acc = mix(twosun, central, w);
     // music bends spacetime harder: gravity surges with loudness, with the
     // local band's energy (so each region pulses to its own frequency), and a
@@ -226,8 +226,10 @@
     // injection, so the disk breathes with the music without flying apart.
     float gMul = 1.0 + uLevelP * 0.30 + specLog(fieldBand(p)) * 0.6 + uOnsetP * 0.35;
     vel += acc * uGScale * gMul * uDt;
-    // NO drag — orbits are conservative so the disk can't slowly collapse
-    // (drag compounds over thousands of frames and was draining the swarm)
+    // conservative inside (rich, evolving physics, no slow collapse); ONLY the
+    // outskirts bleed energy, so the extra chaos stays bound instead of dispersing
+    float dC = length(p - uCenter);
+    vel *= mix(1.0, 0.99, smoothstep(2.4, 3.4, dC));
     p += vel * uDt;
     // recycle: a star that drifts past the (faded) cull radius or falls into a
     // core is reborn in the suns' neighbourhood on a stable circumbinary orbit —
@@ -281,9 +283,11 @@
     // fade out toward the cull radius so stars dim away gracefully (no popping)
     float fade = smoothstep(uCullR, uCullR * 0.65, rad);
 
+    // appearance varies with orbital speed: inner/fast stars run hot and bright,
+    // outer/slow stars are dim and keep their saturated band colour
     vec3 col = mix(bandColor(band), vec3(1.0, 0.96, 0.88),
-                   clamp(loud * 0.5 + spd * 0.07, 0.0, 0.4));   // keep the stellar colour
-    vCol = col * (0.5 + spd * 0.45) * react * tw * fade;
+                   clamp(loud * 0.45 + spd * 0.22, 0.0, 0.6));
+    vCol = col * (0.28 + spd * 0.8) * react * tw * fade;
     gl_PointSize = uPx * depth * (0.5 + h * 0.7 + loud * 1.7);  // swells when band is loud
   }`;
 
