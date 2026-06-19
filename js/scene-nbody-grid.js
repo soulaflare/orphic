@@ -202,54 +202,59 @@
   void main() {
     vec4 st = texelFetch(uParts, ivec2(gl_FragCoord.xy), 0);
     vec2 p = st.xy, vel = st.zw;
-    // every star blends a smooth central backbone (keeps it bound, so the disc
-    // persists) with the REAL two-sun field (organic weaving + spiral density
-    // waves). The blend varies per particle, so instead of one perfect circular
-    // disc on rails we get a natural continuum: some stars ride a stable
-    // backbone, others weave and get slung around the two suns.
+    // TWO distinct populations (fixed per particle) — the reference principle:
+    // structure from clean orbiters + sweeping organic arms from sharp "fighters"
+    // that feel the real two suns. (A per-particle BLEND of the two homogenises
+    // it into an on-rails disc, so keep them separate.)
     float kind = hash12(gl_FragCoord.xy + 7.0);
-    vec2 dc = uCenter - p;
-    float rc2 = dot(dc, dc) + 0.25;
-    vec2 central = uTotM * dc / (rc2 * sqrt(rc2));
-    vec2 twosun = vec2(0.0);
-    for (int i = 0; i < ${MAXM}; i++) {
-      if (i >= uMassN) break;
-      vec2 d = uMass[i].xy - p;
-      float r2 = dot(d, d) + uMass[i].w * 1.5 + 0.03;
-      twosun += uMass[i].z * d / (r2 * sqrt(r2));
-    }
-    float w = 0.25 + kind * 0.45;                 // 0.25..0.70 — more real two-sun field
-    vec2 acc = mix(twosun, central, w);
-    // music bends spacetime harder: gravity surges with loudness, with the
-    // local band's energy (so each region pulses to its own frequency), and a
-    // brief kick on onsets. It's a reversible force scaling, not energy
-    // injection, so the disk breathes with the music without flying apart.
-    float gMul = 1.0 + uLevelP * 0.30 + specLog(fieldBand(p)) * 0.6 + uOnsetP * 0.35;
-    vel += acc * uGScale * gMul * uDt;
-    // conservative inside (rich, evolving physics, no slow collapse); ONLY the
-    // outskirts bleed energy, so the extra chaos stays bound instead of dispersing
     float dC = length(p - uCenter);
-    vel *= mix(1.0, 0.99, smoothstep(2.4, 3.4, dC));
+    vec2 acc;
+    if (kind < 0.38) {
+      // ORBITER — feels only the smooth central mass → a clean structured orbit
+      vec2 dc = uCenter - p;
+      float rc2 = dot(dc, dc) + 0.25;
+      acc = uTotM * dc / (rc2 * sqrt(rc2));
+    } else {
+      // FIGHTER — feels the real two-sun field (sharp): dives, weaves and gets
+      // slung into the long sweeping arms, and naturally clears the centre
+      acc = vec2(0.0);
+      for (int i = 0; i < ${MAXM}; i++) {
+        if (i >= uMassN) break;
+        vec2 d = uMass[i].xy - p;
+        float r2 = dot(d, d) + uMass[i].w * 1.5 + 0.03;
+        acc += uMass[i].z * d / (r2 * sqrt(r2));
+      }
+    }
+    // music bends the field a little — reversible scaling, gentle so it never
+    // destabilises: surges with loudness + the local band, kicks on onsets
+    float gMul = 1.0 + uLevelP * 0.25 + specLog(fieldBand(p)) * 0.5 + uOnsetP * 0.3;
+    vel += acc * uGScale * gMul * uDt;
+    // conservative inside (no slow collapse); only the far outskirts bleed energy
+    vel *= mix(1.0, 0.99, smoothstep(2.6, 3.4, dC));
     p += vel * uDt;
-    // recycle: a star that drifts past the (faded) cull radius or falls into a
-    // core is reborn in the suns' neighbourhood on a stable circumbinary orbit —
-    // so it sweeps around BOTH bodies, density stays high, and the spread of
-    // radii shears into spiral arms
-    // recycle when flung past the edge, or when a star is lingering SLOWLY near
-    // the centre (which would pile up) — but let fast stars swing right through
-    // the middle so it fills organically instead of leaving a hard circular hole
-    float rr = length(p - uCenter), spd2 = length(vel);
-    if (rr > uCullR || rr < 0.12 || (rr < 0.5 && spd2 < 0.45)) {
+    // recycle: flung past the edge, OR trapped slow near the middle (a star that
+    // has lost its orbit and would pile on a sun / at the centre). Fast stars
+    // streaming through the middle are kept, so the centre fills with motion
+    // instead of showing a stamped hole — no fixed-radius cull anywhere.
+    // recycle when flung past the edge, OR when accreting tightly onto a sun
+    // (return it to the disc — this stops sun-clumps and stops the disc draining,
+    // and it's around the bright suns, not at the empty centre, so no hole)
+    float rr = length(p - uCenter);
+    float dSun = min(distance(p, uMass[0].xy),
+                     uMassN > 1 ? distance(p, uMass[1].xy) : 1e9);
+    if (rr > uCullR || dSun < 0.13) {
       vec2 s = gl_FragCoord.xy + uSeed;
       vec2 u = hash22(s);
-      float ang = u.x * 6.28318, rad = 1.0 + u.y * 1.5;
+      bool orbiter = kind < 0.38;
+      float ang = u.x * 6.28318;
+      // orbiters: a clean ring of near-circular orbits (structure). fighters:
+      // start closer with a WIDE speed spread, so some plunge through and cross
+      // the centre (filling the cavity with streams), others arc out into arms.
+      float rad = orbiter ? (1.0 + u.y * 1.9) : (0.5 + u.y * 2.1);
+      float vfac = orbiter ? (0.9 + hash12(s + 4.0) * 0.18)
+                           : (0.5 + hash12(s + 4.0) * 0.6);
       p = uCenter + vec2(cos(ang), sin(ang)) * rad;
-      // varied speed → a spread of eccentricities (not one circular ring), and a
-      // little radial component → orbits that precess and cross for an organic disc
-      float vmag = sqrt(uGScale * uTotM / rad) * (0.72 + hash12(s + 4.0) * 0.5);
-      float radial = (hash12(s + 8.0) - 0.5) * 0.4;
-      vec2 tang = vec2(-sin(ang), cos(ang));
-      vel = tang * vmag + vec2(cos(ang), sin(ang)) * radial;
+      vel = vec2(-sin(ang), cos(ang)) * sqrt(uGScale * uTotM / rad) * vfac;
     }
     fragColor = vec4(p, vel);
   }`;
@@ -284,11 +289,11 @@
     // fade out toward the cull radius so stars dim away gracefully (no popping)
     float fade = smoothstep(uCullR, uCullR * 0.65, rad);
 
-    // appearance varies with orbital speed, but kept dim/saturated so the disc
-    // reads as sparse warm streaks (not a blown-out white blob)
+    // appearance varies with orbital speed: faster = hotter/brighter, but kept
+    // saturated enough to read as warm streaks, not a white blob
     vec3 col = mix(bandColor(band), vec3(1.0, 0.96, 0.88),
-                   clamp(loud * 0.4 + spd * 0.1, 0.0, 0.42));
-    vCol = col * (0.32 + spd * 0.42) * react * tw * fade;
+                   clamp(loud * 0.5 + spd * 0.12, 0.0, 0.5));
+    vCol = col * (0.4 + spd * 0.5) * react * tw * fade;
     gl_PointSize = uPx * depth * (0.5 + h * 0.7 + loud * 1.7);  // swells when band is loud
   }`;
 
@@ -359,7 +364,7 @@
       const bodies = [];
       function initSystem() {
         bodies.length = 0;
-        const D = 1.35, m = 1.0;
+        const D = 0.95, m = 1.0;                              // tighter pair → small cavity
         const vy = Math.sqrt(GSCALE * m / (2 * D));           // circular binary
         // the two suns get contrasting bands (bass=ember vs treble=blue), the
         // companion the mid (gold) — strong warm/cool colour split on the pair
@@ -373,11 +378,10 @@
       // pin the centre of mass to the origin (position AND velocity) so the
       // system never drifts off-screen, even after a capture adds momentum
       function recenter() {
-        // pin only the permanent core (binary + companion) so transient
-        // wanderers can fly freely without yanking the whole system
-        const n = Math.min(3, bodies.length);
+        // pin the binary's centre of mass (indices 0,1) to the origin so the
+        // pair stays framed; the companion/wanderers ride along in its frame
         let mx = 0, mz = 0, px = 0, pz = 0, mt = 0;
-        for (let i = 0; i < n; i++) {
+        for (let i = 0; i < Math.min(2, bodies.length); i++) {
           const b = bodies[i];
           mx += b.m * b.x; mz += b.m * b.z;
           px += b.m * b.vx; pz += b.m * b.vz; mt += b.m;
@@ -388,16 +392,22 @@
       initSystem();
 
       function accelAll() {
+        const n = bodies.length;
         for (const b of bodies) { b.ax = 0; b.az = 0; }
-        for (let i = 0; i < bodies.length; i++) {
-          for (let j = i + 1; j < bodies.length; j++) {
-            const a = bodies[i], b = bodies[j];
-            const dx = b.x - a.x, dz = b.z - a.z;
-            const s = Math.max(a.soft, b.soft);
+        // one-directional: body j feels body i. The binary (0,1) ONLY feels its
+        // partner, so it stays a pristine, stable 2-body — the companion and
+        // wanderers orbit it but can never pull it apart.
+        for (let j = 0; j < n; j++) {
+          const bj = bodies[j];
+          for (let i = 0; i < n; i++) {
+            if (i === j) continue;
+            if (j < 2 && i >= 2) continue;       // binary ignores all perturbers
+            const bi = bodies[i];
+            const dx = bi.x - bj.x, dz = bi.z - bj.z;
+            const s = Math.max(bi.soft, bj.soft);
             const r2 = dx * dx + dz * dz + s * s;
-            const inv = GSCALE / (r2 * Math.sqrt(r2));
-            a.ax += b.m * dx * inv; a.az += b.m * dz * inv;
-            b.ax -= a.m * dx * inv; b.az -= a.m * dz * inv;
+            const inv = GSCALE * bi.m / (r2 * Math.sqrt(r2));
+            bj.ax += dx * inv; bj.az += dz * inv;
           }
         }
       }
@@ -562,7 +572,7 @@
           bindField(pTracer, audio);
           pTracer.i('uDim', DIM_T).f('uKeyHue', keyHue).f('uPx', 3.2)
                  .f('uShimmer', s.sTreble * 1.1 + s.flare).f('uBeat', f.beat).f('uTime4', t)
-                 .f('uCullR', CULLR).f('uBright', (0.42 + s.sLevel * 0.2) * dim)
+                 .f('uCullR', CULLR).f('uBright', (0.52 + s.sLevel * 0.22) * dim)
                  .f('uFalloff', 3.0);
           pTracer.tex('uParts', tr.read.tex, 0).bind();
           gl.bindVertexArray(trVAO);
